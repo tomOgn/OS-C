@@ -227,14 +227,14 @@ void runProcesses(void)
 		{
 		// Error
 		case -1:
-			perror("fork()");
+			perror("fork");
 			exit(EXIT_FAILURE);
 		// Child process
 		case 0:
 			// Execute command
 			if (execv(path, command) == -1)
 			{
-				perror("execv()");
+				perror("execv");
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -254,7 +254,7 @@ void runProcesses(void)
 		{
 		// Error
 		case -1:
-			perror("waitpid()");
+			perror("waitpid");
 			exit(EXIT_FAILURE);
 		// All child processes are still running
 		case 0:
@@ -270,7 +270,6 @@ void runProcesses(void)
 	exit(EXIT_SUCCESS);
 }
 
-// Entry point
 int run(int argc, char *argv[])
 {
 	// Get input
