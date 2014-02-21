@@ -74,18 +74,16 @@ static void runProcess(const char *path, char *args[])
 /*
  * Check if a file is executable
  * Input:
- * 			path, the file
- * 			buf,  the information buffer
+ * 			path, the file file
  * Output:
  * 			1, if the is executable
  * 			0, else
  */
-static inline int isExecutable(const char *file)
+static inline int isExecutable(const char *path)
 {
 	struct stat *buf;
-	return stat(file, &buf) == 0 && buf.st_mode && S_IXUSR;
+	return stat(path, &buf) == 0 && buf.st_mode && S_IXUSR;
 }
-
 
 static void runIfExecutable(const char *path, const char **args)
 {

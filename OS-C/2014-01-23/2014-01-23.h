@@ -20,77 +20,60 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2014.01.23.pdf
 #include "../const.h"
 
 // Function declarations
-static inline int isTextFile(FILE *fp);
-static inline int isRegularFile(struct stat info);
-static inline void openFile(const char *path, FILE **fp);
-static int readFileLine(const FILE *fp, const struct stat info, const int n, char *line, int lenght);
-
-extern void run(const char *path, const int n);
+static inline int isTextFile(char *path);
+static inline int isHiddenFile(FILE *fp);
+static int getEndOfLines(char *path, int theLine, int *lenght);
 
 /*
- * Find a specific line in a text file.
- * Map the whole file. Search for a specific line sequentially.
- * Therefore never accesses more than one page at a time.
+ * Find a specific line in a text file and get its lenght (i.e. number of characters).
  * Input:
- * 			fp,     the file pointer
- * 			info,   the file attributes
- * 			n,      the specific line
+ * 			path,       the file path
+ * 			theLine,    the line
  * Output:
- * 			line,   the pointer to the line
- * 			lenght, the lenght of the line
+ * 			lenght,     the lenght of the line
  *
- * 			1,      in case of success
- * 			0,      else
+ * 			1,          in case of success
+ * 			0,          else
  */
-static int readFileLine(const FILE *fp, const struct stat info, const int n, char *line, int lenght)
+static int getEndOfLines(char *path, int theLine, int *lenght)
 {
-	char *buf;
-	off_t start = -1, end = -1;
-	size_t i;
-	int ln, output = TRUE, count = n;
+	int c, count, line, output;
+	FILE *stream;
 
-	// Pre-conditions: n >= 1
-	if (n < 1) return FALSE;
-
-	if (n == 1) start = 0;
-
-	count--;
-
-	buf = mmap(NULL, info.st_size, PROT_READ, MAP_PRIVATE, (int)fp, (int)0);
-	madvise(buf, info.st_size, MADV_SEQUENTIAL);
-
-	for (i = ln = 0; i < info.st_size && ln <= count; i++)
+	count = 0;
+	line = 0;
+	stream = fopen(path, "r");
+	if (!stream)
 	{
-		printf("%c\n",buf[i]);
-		if (buf[i] != '\n') continue;
-
-		printf("%d\n", ln);
-		if (++ln == count)
-		{
-			start = i + 1;
-		}
-		else if (ln == count + 1)
-		{
-			end = i + 1;
-		}
+        perror("fopen");
+        exit(EXIT_FAILURE);
 	}
 
-	// [Case 1] File does not have lines
-	if (start >= info.st_size || start < 0)
+	while ((c = fgetc(stream)) != EOF && line < theLine)
 	{
-		output = FALSE;
+		if (c == '\n')
+		{
+			line++;
+			if (line < theLine) count = 0;
+		}
+		else count++;
+	}
+
+	fclose(stream);
+
+	if (line == theLine)
+	{
+		*lenght = count;
+		output = TRUE;
 	}
 	else
 	{
-		line = buf + start;
-		lenght = ((int)end - (int)buf) * sizeof(char *);
+		*lenght = 0;
+		output = FALSE;
 	}
-
-	munmap(buf, info.st_size);
 
 	return output;
 }
-
 
 /*
  * Check if a file is textual
@@ -100,11 +83,19 @@ static int readFileLine(const FILE *fp, const struct stat info, const int n, cha
  * 			1, if the file is a text file
  * 			0, else
  */
-static inline int isTextFile(FILE *fp)
+static inline int isTextFile(char *path)
 {
 	int c;
+	FILE *fp = fopen(path, "r");
+
+	if (!fp)
+	{
+        perror("fopen");
+        exit(EXIT_FAILURE);
+	}
 
 	while ((c = fgetc(fp)) != EOF && c >= 1 && c <= 127);
+	fclose(fp);
 
 	return c == EOF;
 }
@@ -122,32 +113,8 @@ static inline int isHiddenFile(FILE *fp)
 	return fgetc(fp) == '.';
 }
 
-/*
- * Check if a file is a regular file
- * Input:
- * 			fp, the file pointer
- * Output:
- * 			1, if the file is a regular file
- * 			0, else
- */
-static inline int isRegularFile(struct stat info)
+extern void run(char *path, int n)
 {
-	return S_ISREG(info.st_mode);
-}
-
-static inline void openFile(const char *path, FILE **fp)
-{
-	if (!(*fp = fopen(path, "r")))
-	{
-        perror("fopen");
-        putchar('\n');
-        exit(EXIT_FAILURE);
-	}
-}
-
-extern void run(const char *path, const int n)
-{
-	FILE *fp = NULL;
 	int count = 0;
 	struct stat info;
 
@@ -155,21 +122,18 @@ extern void run(const char *path, const int n)
 	if (!lstat(path, &info) < 0)
 	{
         perror("lstat");
-        putchar('\n');
         exit(EXIT_FAILURE);
 	}
 
-	// Open file
-	openFile(path, &fp);
-
 	// If it is a text file and a regular file
-	if (isTextFile(fp) && isRegularFile(info))
+	if (isTextFile(path) && S_ISREG(info.st_mode))
 	{
 		// Get the lenght of the n-th line
-		readFileLine(fp, info, n, NULL, count);
-		printf("%d\n", count);
+		if (getEndOfLines(path, n, &count))
+		{
+			printf("count = %d\n", count);
+		}
 	}
 
-	fclose(fp);
 	exit(EXIT_SUCCESS);
 }

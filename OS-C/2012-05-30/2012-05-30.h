@@ -83,7 +83,7 @@ static void runProcess(const char *path, char *argv[])
 	// Child process
 	case 0:
 		// Execute command
-		if (execv(path, argv) == -1)
+		if (execvp(path, argv) == -1)
 		{
 			perror("execv");
 			exit(EXIT_FAILURE);
@@ -138,8 +138,7 @@ static inline void findPointer(const char *line, const char *cwd)
 	if (!fileExists(path))
 	{
 		argv = tokenize(command);
-		strcpy(path, "/usr/bin/");
-		strcat(path, argv[0]);
+		strcpy(path, argv[0]);
 		printf("path = %s\n", path);
 		runProcess(path, argv);
 	}
