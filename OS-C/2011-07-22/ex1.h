@@ -54,15 +54,13 @@ static int filterDirExecutable(const struct dirent *entry)
 
 /*
  * Check if a file is executable
- * Input:
- * 			path, the file file
- * Output:
- * 			1, if the is executable
- * 			0, else
+ * Input:  path, file path
+ * Output: 1,    if it is executable
+ * 		   0,    else
  */
 static inline int isExecutable(char *path)
 {
-	return (access(path, X_OK) == 0);
+	return access(path, X_OK) == 0;
 }
 
 /*

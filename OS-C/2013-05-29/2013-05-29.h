@@ -14,19 +14,31 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2013.05.29.pdf
 #include <errno.h>
 #include <unistd.h>
 
+// Function declarations
+static inline void errorAndDie(const char *msg);
+static inline void printAndDie(const char *msg);
+static inline int isTextFile(char *path);
+static inline int isHiddenFile(char *path);
+static inline int isRegularFile(char *path);
+static int getLenghtOfLine(char *path, int theLine, int *lenght);
+int iNodeComparison(const struct dirent **a, const struct dirent **b);
+static void scanDirectory(char *dir);
+static inline char *getAbsolutePath(char *dirPath, char *filePath);
+
 /*
  * Comparison function for iNode
- * Input:
- * 			2 dirent pointers
- * Output:
- * 			1,	if iNode[a] >  iNode[b]
- * 			0,	if iNode[a] == iNode[b]
- * 		   -1,  if iNode[a] <  iNode[b]
+ * Input:   a & b,  pointers to directory entries
+ * Output:  1,	    if iNode[a] >  iNode[b]
+ * 			0,	    if iNode[a] == iNode[b]
+ * 		   -1,      if iNode[a] <  iNode[b]
  */
 int iNodeComparison(const struct dirent **a, const struct dirent **b)
 {
-    long iNodeA = (long)(*a)->d_ino;
-    long iNodeB = (long)(*b)->d_ino;
+    long iNodeA, iNodeB;
+
+    iNodeA = (long)(*a)->d_ino;
+    iNodeB = (long)(*b)->d_ino;
+
     return (iNodeA > iNodeB) - (iNodeA < iNodeB);
 }
 

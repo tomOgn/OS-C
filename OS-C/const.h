@@ -1,5 +1,5 @@
-#ifndef CONSTS_H_
-#define CONSTS_H_
+#ifndef CONSTS_H
+#define CONSTS_H
 
 #define FALSE		0
 #define TRUE 		1
