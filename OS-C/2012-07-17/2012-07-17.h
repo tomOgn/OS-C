@@ -120,6 +120,26 @@ void tryPipeSTDOUT(void)
 }
 
 /*
+ * Print error message and exit
+ * Input: msg, the error message
+ */
+static inline void errorAndDie(const char *msg)
+{
+	perror(msg);
+	exit(EXIT_FAILURE);
+}
+
+/*
+ * Print message and exit
+ * Input: msg, the message
+ */
+static inline void printAndDie(const char *msg)
+{
+	printf("%s\n", msg);
+	exit(EXIT_FAILURE);
+}
+
+/*
  * Run n copies of a process in a concurrent way.
  * Wait until all of them are terminated.
  * Input:	command, the process to run
@@ -128,7 +148,7 @@ void tryPipeSTDOUT(void)
  *          n,       the number of copies
  * Output:	void
  */
-void runConcurrentProcessCopies(char *path, char **args, char *env[], int n)
+void runProcessCopies(char *path, char **args, char *env[], int n)
 {
 	pid_t pid;
 	int status, terminated = 0, started;

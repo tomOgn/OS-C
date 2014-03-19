@@ -63,6 +63,26 @@ static inline char **tokenize(const char *sentence)
 }
 
 /*
+ * Print error message and exit
+ * Input: msg, the error message
+ */
+static inline void errorAndDie(const char *msg)
+{
+	perror(msg);
+	exit(EXIT_FAILURE);
+}
+
+/*
+ * Print message and exit
+ * Input: msg, the message
+ */
+static inline void printAndDie(const char *msg)
+{
+	printf("%s\n", msg);
+	exit(EXIT_FAILURE);
+}
+
+/*
  * Run a specific process.
  * Wait until it terminates.
  * Input:	path,    the path to the file to run
@@ -78,28 +98,20 @@ static void runProcess(const char *path, char *argv[])
 	{
 	// Error
 	case -1:
-		perror("fork");
-		exit(EXIT_FAILURE);
+		errorAndDie("fork");
+		break;
 	// Child process
 	case 0:
 		// Execute command
 		if (execvp(path, argv) == -1)
-		{
-			perror("execv");
-			exit(EXIT_FAILURE);
-		}
+			errorAndDie("execvp");
 		break;
 	// Parent process
 	}
 
 	// Wait until the child process terminates
-	if (wait(NULL) == -1)
-	{
-		perror("waitpid");
-		exit(EXIT_FAILURE);
-	}
-
-	exit(EXIT_SUCCESS);
+	if (wait(NULL) < 0)
+		errorAndDie("waitpid");
 }
 
 /*

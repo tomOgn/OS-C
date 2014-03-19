@@ -32,6 +32,9 @@
 #define BUF_LEN (MAX_EVENTS * (EVENT_SIZE + LEN_NAME))
 
 // Function declarations
+static inline int max(int a[], int n);
+static inline void printArray(int x[], int n);
+static inline void inverseArray(int x[], int n);
 static inline int isNatural(int n);
 static inline int isInteger(char *n);
 static inline int isSignalNumber(int n);
@@ -47,9 +50,60 @@ static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
 static int getLenghtOfLine(char *path, int theLine, int *lenght);
 static inline int isDirectory(char *path);
+static inline int getSizeFile(char *path, off_t *size);
 static inline int isTextFile(char *path);
 static inline int isHiddenFile(char *path);
 static inline int isRegularFile(char *path);
+
+/*
+ * Find the max in an array.
+ * Input:  a, an array
+ *         n, its size
+ * Output: the maximum value
+ */
+static inline int max(int a[], int n)
+{
+	int i, max = a[0];
+
+	for (i = 1; i < n; i++)
+		if (a[i] > max)
+			max = a[i];
+
+	return max;
+}
+
+/*
+ * Print the elements of an array.
+ * Input:  x, array
+ *         n, array size
+ */
+static inline void printArray(int x[], int n)
+{
+	int i;
+
+	for(i = 0; i < n; i++)
+		printf("%d ", x[i]);
+	printf("\n");
+}
+
+/*
+ * Invert the elements of an array.
+ * Input:  x, array
+ *         n, array size
+ */
+static inline void inverseArray(int x[], int n)
+{
+	int i, tmp;
+
+	n--;
+	for(i = 0; i < n / 2; i++)
+	{
+		tmp = x[i];
+		x[i] = x[n];
+		x[n] = tmp;
+		n--;
+	}
+}
 
 /*
  * Check if a number is natural.
@@ -384,6 +438,32 @@ static inline int isDirectory(char *path)
 		errorAndDie("stat");
 
 	return info.st_mode & S_IFDIR;
+}
+
+/*
+ * Check if a file is a regular file.
+ * If yes, return its size in Bytes.
+ * Input:  path, file path
+ * Output: 1,    if it is a regular file
+ * 		   0,    else
+ *
+ * 		   size, its size
+ */
+static inline int getSizeFile(char *path, off_t *size)
+{
+	struct stat info;
+	int output = FALSE;
+
+	if (stat(path, &info) < 0)
+		errorAndDie("stat");
+
+	if (info.st_mode & S_IFREG)
+	{
+		output = TRUE;
+		*size = info.st_size;
+	}
+
+	return output;
 }
 
 /*
