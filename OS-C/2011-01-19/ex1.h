@@ -18,11 +18,19 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2011.01.19.pdf
 #include <getopt.h>
 
 // Function declarations
+static inline void printAndDie(const char *msg);
 static inline void errorAndDie(const char *msg);
-static void RedirectIOAndRunProcess(const char *outFile, const char *inFile, const char *path, char *command[]);
+static void redirectAndRun(char *outFile, char *inFile, char *path, char *command[]);
 static void parseArguments(int argc, char **argv);
 
-static void RedirectIOAndRunProcess(const char *outFile, const char *inFile, const char *path, char *command[])
+/*
+ * Re-direct [input, output] and run a command
+ * Input: outFile, output file
+ *        inFile,  input file
+ *        command, command
+ *        args,    command arguments
+ */
+static void redirectAndRun(char *outFile, char *inFile, char *command, char *args[])
 {
 	int pid, outFD, inFD;
 
@@ -40,12 +48,13 @@ static void RedirectIOAndRunProcess(const char *outFile, const char *inFile, con
 			errorAndDie("open");
 	}
 
-	switch (pid = fork())
-	{
-	case -1:
+	pid = fork();
+	if (pid < 0)
 		errorAndDie("fork");
-		break;
-	case 0:
+
+	// Child process
+	if (pid == 0)
+	{
 		if (inFile)
 		{
 			if (dup2(inFD, 0) < 0)
@@ -58,24 +67,23 @@ static void RedirectIOAndRunProcess(const char *outFile, const char *inFile, con
 				errorAndDie("dup2");
 			close(outFD);
 		}
-	    if (execvp(path, command) == -1)
+	    if (execvp(command, args) < 0)
 	    	errorAndDie("execvp");
-	    break;
-	default:
-		if (inFile)
-			close(inFD);
-		if (outFile)
-			close(outFD);
 	}
+
+	// Parent process
+	if (inFile)
+		close(inFD);
+	if (outFile)
+		close(outFD);
 }
 
 static void parseArguments(int argc, char **argv)
 {
-	int i, result, optIndex;
+	int i, j, result;
 	char **command;
 	const char *shortOptions = "o:i:h";
 	char *fileName, *outFile, *inFile;
-	extern int opterr;
 
 	static struct option longOptions[] =
 	{
@@ -85,10 +93,11 @@ static void parseArguments(int argc, char **argv)
 		{0,         0,                 0,   0  }
 	};
 
-	opterr = optIndex = 0;
 	result = TRUE;
 	outFile = inFile = NULL;
-	result = getopt_long(argc, argv, shortOptions, longOptions, &i);
+	result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
+	if (result < 0)
+		printAndDie("Wrong input. Run 'redir -h' for help.");
 
 	while (result != -1 && result != '?')
 	{
@@ -96,11 +105,9 @@ static void parseArguments(int argc, char **argv)
 		{
 		case 'i':
 			inFile = optarg;
-			optIndex = optind;
 			break;
 		case 'o':
 			outFile = optarg;
-			optIndex = optind;
 			break;
 		case 'h':
 			printf("Usage: [options] command\n");
@@ -111,28 +118,22 @@ static void parseArguments(int argc, char **argv)
 			exit(EXIT_SUCCESS);
 		}
 
-		i = 0;
-		result = getopt_long(argc, argv, shortOptions, longOptions, &i);
+		result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
 	}
 
-	if (optIndex == argc)
-	{
-		printf("Wrong input. Run 'redir -h' for help.\n");
-		exit(EXIT_FAILURE);
-	}
+	if (optind == argc || result == '?')
+		printAndDie("Wrong input. Run 'redir -h' for help.");
 
-	command = (char **) malloc((argc - optIndex + 1) * sizeof(char **));
-	fileName = argv[optIndex];
+	command = (char **) malloc((argc - optind + 1) * sizeof(char *));
+	fileName = argv[j];
 
 	i = 0;
-	while (optIndex < argc)
-		command[i++] = argv[optIndex++];
+	j = optind;
+	while (j < argc)
+		command[i++] = argv[j++];
 	command[i] = NULL;
 
-	RedirectIOAndRunProcess(outFile, inFile, fileName, command);
-
-	printf("Done!\n");
-	exit(EXIT_SUCCESS);
+	redirectAndRun(outFile, inFile, fileName, command);
 }
 
 /*
@@ -142,6 +143,16 @@ static void parseArguments(int argc, char **argv)
 static inline void errorAndDie(const char *msg)
 {
 	perror(msg);
+	exit(EXIT_FAILURE);
+}
+
+/*
+ * Print message and exit
+ * Input: msg, the message
+ */
+static inline void printAndDie(const char *msg)
+{
+	printf("%s\n", msg);
 	exit(EXIT_FAILURE);
 }
 

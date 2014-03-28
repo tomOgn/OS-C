@@ -50,7 +50,6 @@ static void redirectInputInBuffer(void)
 	size_t size;
 	char *ptr;
 
-
 	in = open_memstream(&ptr, &size);
 	if (!in)
 		errorAndDie("open_memstream");

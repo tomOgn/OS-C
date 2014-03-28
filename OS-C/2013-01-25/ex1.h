@@ -14,19 +14,26 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2013.05.29.pdf
 #include <dirent.h>
 #include <regex.h>
 #include <unistd.h>
-#include <string.h>
 
 // Function declarations
 static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
+static inline int isNumber(const char *text);
+static inline int getSoftLink(char *filePath, char **softLink);
+static inline void getCurrentProcesses(void);
+
+extern void run(int argc, char *argv[])
+{
+	getCurrentProcesses();
+}
 
 /*
  * Check whether a string is made only by numbers or not
- * Input:   name, the string
+ * Input:   text, the string
  * Output:  1,    if the string is only made by numbers
  * 			0,    else
  */
-int isOnlyMadeByNumbers(const char *name)
+static inline int isNumber(const char *text)
 {
 	regex_t regExp;
 	char *pattern = "[0-9]";
@@ -35,7 +42,7 @@ int isOnlyMadeByNumbers(const char *name)
     if (regcomp(&regExp, pattern, REG_EXTENDED) != 0)
     	errorAndDie("regcomp");
 
-    status = regexec(&regExp, name, regExp.re_nsub, NULL, 0);
+    status = regexec(&regExp, text, regExp.re_nsub, NULL, 0);
     regfree(&regExp);
 
     return !status;
@@ -47,9 +54,9 @@ int isOnlyMadeByNumbers(const char *name)
  * Output:  1,     if the entry is a directory and its name is only made by numbers
  * 			0,     else
  */
-int filterDirectories(const struct dirent *entry)
+int filterNames(const struct dirent *entry)
 {
-	return entry->d_type == DT_DIR && isOnlyMadeByNumbers(entry->d_name);
+	return entry->d_type == DT_DIR && isNumber(entry->d_name);
 }
 
 /*
@@ -60,7 +67,7 @@ int filterDirectories(const struct dirent *entry)
  *
  * 			softLink, the soft link
  */
-int getSoftLink(const char *filePath, char **softLink)
+static inline int getSoftLink(char *filePath, char **softLink)
 {
 	int size, count;
 
@@ -81,7 +88,7 @@ int getSoftLink(const char *filePath, char **softLink)
  * Input:   None
  * Output:  Print PID and command for each running process
  */
-static void getCurrentProcesses(void)
+static inline void getCurrentProcesses(void)
 {
 	int count, i;
 	struct dirent **entries;
@@ -90,7 +97,7 @@ static void getCurrentProcesses(void)
 
 	softLink = NULL;
 	PATH = "/proc";
-	count = scandir(PATH, &entries, filterDirectories, NULL);
+	count = scandir(PATH, &entries, filterNames, NULL);
 
 	// Check if any errors occurred
 	if (count < 0)
@@ -102,11 +109,6 @@ static void getCurrentProcesses(void)
 		if (getSoftLink(process, &softLink))
 			printf("%s %s\n", entries[i]->d_name, softLink);
 	}
-}
-
-extern void run(int argc, char *argv[])
-{
-	getCurrentProcesses();
 }
 
 /*

@@ -65,11 +65,9 @@ static inline int isExecutable(char *path)
 
 /*
  * Check if a file is executable
- * Input:
- * 			path, the file file
- * Output:
- * 			1, if the is executable
- * 			0, else
+ * Input:  path, the file file
+ * Output: 1, if the is executable
+ *         0, else
  */
 static inline int isExecutable2(char *path)
 {

@@ -62,11 +62,11 @@ extern void run(void)
 
 	// Establish a connection between shared memory object and file descriptor
 	fd = shm_open(name, O_CREAT | O_TRUNC | O_RDWR, 0666);
-	if (fd == -1)
+	if (fd < 0)
 		errorAndDie("shm_open");
 
 	// Set shared memory size
-	if (ftruncate(fd, sizeof(sharedRegion)) == -1)
+	if (ftruncate(fd, sizeof(sharedRegion)) < 0)
 		errorAndDie("ftruncate");
 
 	// Maps file descriptor into memory

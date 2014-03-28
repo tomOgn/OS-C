@@ -11,6 +11,8 @@
 #include <getopt.h>
 #include <limits.h>
 #include <math.h>
+#include <poll.h>
+#include <regex.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,30 +32,469 @@
 #define EVENT_SIZE (sizeof (struct inotify_event))
 // Buffer to store the events
 #define BUF_LEN (MAX_EVENTS * (EVENT_SIZE + LEN_NAME))
+#define MaxLenArr 128 // Max length array
+#define MaxLenStr 256 // Max length string
+#define BUFFER_SIZE 1024
+
+// Data types
+typedef struct
+{
+	// File path
+	char *pth;
+
+	// Command
+	char *cmd[MaxLenArr];
+
+	// Environment variables
+	char *env[2];
+} Process;
 
 // Function declarations
-static inline int max(int a[], int n);
-static inline void printArray(int x[], int n);
-static inline void inverseArray(int x[], int n);
-static inline int isNatural(int n);
-static inline int isInteger(char *n);
-static inline int isSignalNumber(int n);
 static void compareDirectories(char *dirA, char *dirB);
-int filterExtensions(const struct dirent *entry);
-static int hasExtension(const char *fileName, const char **extensions, int n);
-static inline int sameContent(FILE *f1, FILE *f2);
-static inline char *getAbsolutePath(char *dirPath, char *filePath);
-int iNodeComparison(const struct dirent **a, const struct dirent **b);
-static void scanDirectory(char *dir);
-static void spyDirectory(char *directory);
 static inline void errorAndDie(const char *msg);
-static inline void printAndDie(const char *msg);
+int filterExtensions(const struct dirent *entry);
+int filterNames(const struct dirent *entry);
+static inline char *getAbsolutePath(char *dirPath, char *filePath);
+static inline void getCurrentProcesses(void);
 static int getLenghtOfLine(char *path, int theLine, int *lenght);
-static inline int isDirectory(char *path);
 static inline int getSizeFile(char *path, off_t *size);
-static inline int isTextFile(char *path);
+static inline int getSoftLink(char *filePath, char **softLink);
+static int hasExtension(const char *fileName, const char **extensions, int n);
+int iNodeComparison(const struct dirent **a, const struct dirent **b);
+static inline void inverseArray(int x[], int n);
+static inline int isDirectory(char *path);
+static inline int isExecutable(char *path);
+static inline int isFile(char *path);
 static inline int isHiddenFile(char *path);
-static inline int isRegularFile(char *path);
+static inline int isInteger(char *n);
+static inline int isNatural(int n);
+static inline int isNumber(char *text);
+static inline int isProcess(int pid);
+static inline int isSignalNumber(int n);
+static inline int isTextFile(char *path);
+static inline int max(int a[], int n);
+static inline Process *parseArguments(int argc, char **argv);
+static inline void pollNamedPipes(char *name[], int n);
+static inline void printArray(int x[], int n);
+static inline void printAndDie(const char *msg);
+static inline void readPipe(int fd);
+static inline void runProcess(char *path, char *command[]);
+static inline void runProcessN(Process *process, int n);
+static inline int sameContent(FILE *f1, FILE *f2);
+static void scanDirectory(char *dir);
+static inline void simplePipe(void);
+static inline void signalRepeater(int pid);
+static void spyDirectory(char *directory);
+static inline void writePipe(int fd);
+
+/*
+ * Multiplex I/O over a set of named pipes.
+ * Loop until there is at least one stream active.
+ * Input: name, the named pipes
+ *        n,    the number of named pipes
+ */
+static inline void pollNamedPipes(char *name[], int n)
+{
+	int	i, fd, count, streams;
+	struct pollfd fds[n];
+	char buffer[BUFFER_SIZE];
+
+	for (i = 0; i < n; i++)
+	{
+		// Create a named pipe
+		if ((mkfifo(name[i], S_IRWXU)) < 0)
+			errorAndDie("mkfifo");
+
+		// Open a stream
+		fd = open(name[i], O_RDONLY);
+		if (fd < 0)
+			errorAndDie("open");
+
+		// Initialize a file descriptors set
+		fds[i].fd = fd;
+		fds[i].events = POLLIN;
+		fds[i].revents = 0;
+	}
+
+	// Loop until there are >= 1 running streams
+	streams = n;
+	while (streams > 0)
+	{
+		// Wait until an event has occurred
+		if (poll(fds, n, -1) < 0)
+			errorAndDie("poll");
+
+		for (i = 0; i < n; i ++)
+		{
+			// Check for available data
+			if ((fds[i].revents & POLLIN) != 0)
+			{
+				// Fill the buffer
+				count = read(fds[i].fd, &buffer, sizeof (buffer));
+				if (count < 0)
+					errorAndDie("read");
+
+				// Deliver the buffer to the standard output
+				if (write(STDOUT_FILENO, buffer, count) < 0)
+					errorAndDie("write");
+
+				// Clear the buffer
+				memset(buffer, 0, sizeof (buffer));
+			}
+
+			// Check if the device has been disconnected
+			if ((fds[i].revents & POLLHUP ) != 0)
+			{
+				printf("The device %s has been disconnected\n", name[i]);
+				fds[i].fd = -1;
+				streams--;
+			}
+		}
+	}
+}
+
+/*
+ * Run a process.
+ * Wait until it terminates.
+ * Input: path,    file to run
+ *        command, list of arguments
+ */
+static inline void runProcess(char *path, char *command[])
+{
+	pid_t pid;
+
+	// Fork
+	pid = fork();
+	if (pid < 0)
+		errorAndDie("fork");
+
+	// Child process
+	if (pid == 0)
+	{
+		// Execute command
+		if (execvp(path, command) < 0)
+			errorAndDie("execve");
+
+		exit(EXIT_SUCCESS);
+	}
+
+	// Wait until it terminates
+	if (wait(NULL) < 0)
+		errorAndDie("wait");
+}
+
+/*
+ * Get current processes
+ * Input:   None
+ * Output:  Print PID and command for each running process
+ */
+static inline void getCurrentProcesses(void)
+{
+	int count, i;
+	struct dirent **entries;
+	char process[1024];
+	char *softLink, *PATH;
+
+	softLink = NULL;
+	PATH = "/proc";
+	count = scandir(PATH, &entries, filterNames, NULL);
+
+	// Check if any errors occurred
+	if (count < 0)
+		errorAndDie("scandir");
+
+	for (i = 0; i < count; i++)
+	{
+		snprintf(process, sizeof process, "%s%s%s%s", PATH, "/", entries[i]->d_name, "/exe");
+		if (getSoftLink(process, &softLink))
+			printf("%s %s\n", entries[i]->d_name, softLink);
+	}
+}
+
+/*
+ * Get a soft link from a given file path
+ * Input:   filePath, the file path
+ * Output:  1,        if success
+ * 			0,        else
+ *
+ * 			softLink, the soft link
+ */
+static inline int getSoftLink(char *filePath, char **softLink)
+{
+	int size, count;
+
+	size = 64;
+	do
+	{
+		*softLink = (char *) realloc(*softLink, size);
+		count = readlink(filePath, *softLink, size);
+		size *= 2;
+	}
+	while (count > size);
+
+	return count > 0;
+}
+
+/*
+ * Filter function for directory entries
+ * Input:   entry, directory entry
+ * Output:  1,     if the entry is a directory and its name is only made by numbers
+ * 			0,     else
+ */
+int filterNames(const struct dirent *entry)
+{
+	return entry->d_type == DT_DIR && isNumber(entry->d_name);
+}
+
+/*
+ * Check whether a string is made only by numbers or not
+ * Input:   text, the string
+ * Output:  1,    if the string is only made by numbers
+ * 			0,    else
+ */
+static inline int isNumber(char *text)
+{
+	regex_t regExp;
+	char *pattern = "[0-9]";
+	int status;
+
+    if (regcomp(&regExp, pattern, REG_EXTENDED) != 0)
+    	errorAndDie("regcomp");
+
+    status = regexec(&regExp, text, regExp.re_nsub, NULL, 0);
+    regfree(&regExp);
+
+    return !status;
+}
+
+/*
+ * Check if a file is executable
+ * Input:  path, file path
+ * Output: 1,    if it is executable
+ * 		   0,    else
+ */
+static inline int isExecutable(char *path)
+{
+	return access(path, X_OK) == 0;
+}
+
+/*
+ * Parse command line arguments.
+ * Input: argc, argument counter
+ *        argv, argument vector
+ * Output:
+ *        Process, data structure containing:
+ *           pth, file to run
+ *           cmd, list of arguments
+ *           env, environment variable
+ */
+static inline Process *parseArguments(int argc, char **argv)
+{
+	int i;
+	Process *process = (Process *) malloc(sizeof (Process));
+
+	// Set the file path
+	process->pth = argv[2];
+
+	// Set the argument list
+	for (i = 0; i < argc - 2; i++)
+		process->cmd[i] = argv[i + 2];
+	process->cmd[i] = NULL;
+
+	// Initialize the environment variable
+	process->env[0] = (char *) malloc(sizeof (char) * MaxLenStr);
+	process->env[1] = NULL;
+
+	return process;
+}
+
+/*
+ * Run n copies of a process.
+ * Wait until all of them terminate.
+ * Input: process, data structure containing:
+ *           pth, file to run
+ *           cmd, list of arguments
+ *           env, environment variables
+ *        n,       number of copies
+ */
+static inline void runProcessN(Process *process, int n)
+{
+	pid_t pid;
+	int started, terminated;
+	char buf[4096];
+	ssize_t count;
+	int **fd;
+	extern char **environ;
+
+	// Initialize file descriptors to be used for the pipeline
+	fd = (int **) malloc(sizeof (int **) * n);
+	for (started = 0; started < n; started++)
+		fd[started] = (int *) malloc (sizeof(int *) * 2);
+
+	// For each copy
+	for (started = 0; started < n; started++)
+	{
+		// Create a new pipe
+		if (pipe(fd[started]) < 0)
+			errorAndDie("pipe");
+
+		// Fork
+		pid = fork();
+		if (pid < 0)
+			errorAndDie("fork");
+
+		// Child process
+		if (pid == 0)
+		{
+			// Close input side of pipe
+			close(fd[started][0]);
+
+			// Re-direct the standard output into the pipe
+			if (dup2(fd[started][1], STDOUT_FILENO) < 0)
+				errorAndDie("dup2");
+
+			// Set the environment variable
+			sprintf(process->env[0], "%s=%d", "NCOPIA", started);
+		    environ = process->env;
+
+			// Execute command
+			if (execvp(process->pth, process->cmd) < 0)
+				errorAndDie("execve");
+
+			exit(EXIT_SUCCESS);
+		}
+
+		// Close output side of pipe
+		close(fd[started][1]);
+
+		// Read on the pipe
+		while ((count = read(fd[started][0], buf, sizeof(buf))) > 0)
+		{
+			if (write(1, buf, count) < 0)
+				errorAndDie("write");
+
+			if (memset(buf, 0, 10) < 0)
+				errorAndDie("memset");
+		}
+
+		if (count < 0)
+			errorAndDie("read");
+	}
+
+	// Wait processes
+	for (terminated = 0; terminated < started; terminated++)
+		if (wait(NULL) < 0)
+			errorAndDie("wait");
+
+	exit(EXIT_SUCCESS);
+}
+
+/*
+ * Read data from pipe to standard output.
+ * Input: fd, file descriptor
+ */
+static inline void readPipe(int fd)
+{
+	FILE *stream;
+	int c;
+
+	stream = fdopen(fd, "r");
+	while ((c = fgetc(stream)) != EOF)
+		putchar(c);
+	fclose(stream);
+}
+
+/*
+ * Write data to pipe.
+ * Input: fd, file descriptor
+ */
+static inline void writePipe(int fd)
+{
+	FILE *stream;
+
+	stream = fdopen(fd, "w");
+	fprintf(stream, "hello world!\n");
+	fclose(stream);
+}
+
+/*
+ * Basic input/output from/to pipe.
+ */
+static inline void simplePipe(void)
+{
+	pid_t pid;
+	int mypipe[2];
+
+	// Create pipe
+	if (pipe(mypipe) < 0)
+		errorAndDie("pipe");
+
+	// Fork
+	pid = fork();
+	if (pid < 0)
+		errorAndDie("pipe");
+
+	// Child process
+	if (pid == 0)
+	{
+		// Close input side of pipe
+		close(mypipe[0]);
+
+		// Write to pipe
+		writePipe(mypipe[1]);
+
+		exit(EXIT_SUCCESS);
+	}
+
+	// Close output side of pipe
+	close(mypipe[1]);
+
+	// Read from pipe
+	readPipe(mypipe[0]);
+}
+
+/*
+ * Send signals to a running process.
+ * Input:  pid,   the running process
+ */
+static inline void signalRepeater(int pid)
+{
+	int sigNum, i;
+	sigset_t sigSet;
+	int *terminatingSignals = { SIGTERM, SIGINT, SIGQUIT, SIGKILL, SIGHUP };
+
+	// Initialize and empty a signal set
+	if (sigemptyset(&sigSet) < 0)
+		errorAndDie("sigemptyset");
+
+	// Initialize a signal set to full, including all signals
+	if (sigfillset(&sigSet) < 0)
+		errorAndDie("sigfillset");
+
+	// Remove terminating signals
+	for (i = 0; i < 5; i++)
+		if (sigdelset(&sigSet, terminatingSignals[i++]) < 0)
+			errorAndDie("sigdelset");
+
+	while (TRUE)
+	{
+		if (sigwait(&sigSet, &sigNum) < 0)
+			errorAndDie("sigwait");
+
+		kill(pid, sigNum);
+	}
+}
+
+/*
+ * Check whether a PID refers to a running process or not.
+ * Input:  pid,   the PID to check
+ * Output: TRUE,  if yes
+ *         FALSE, otherwise
+ */
+static inline int isProcess(int pid)
+{
+	return !kill(pid, 0);
+}
 
 /*
  * Find the max in an array.
@@ -107,7 +548,7 @@ static inline void inverseArray(int x[], int n)
 
 /*
  * Check if a number is natural.
- * Input:  n, number
+ * Input:  n, the number
  * Output: 1, if the number is natural
  * 		   0, else
  */
@@ -117,8 +558,8 @@ static inline int isNatural(int n)
 }
 
 /*
- * Check if a string represents an integer.
- * Input:  n, string
+ * Check whether a string represents an integer or not.
+ * Input:  n, the string
  * Output: 1, if the string represents an integer
  * 		   0, else
  */
@@ -507,7 +948,7 @@ static inline int isHiddenFile(char *path)
  * Output: 1,    if the file is a regular file
  * 		   0,    else
  */
-static inline int isRegularFile(char *path)
+static inline int isFile(char *path)
 {
 	struct stat info;
 

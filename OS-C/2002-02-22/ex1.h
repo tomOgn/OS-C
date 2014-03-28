@@ -1,9 +1,9 @@
 /*
 Prova Pratica di Laboratorio di Sistemi Operativi
-15 gennaio 2009
+22 02 2002
 Esercizio 1
 
-URL: http://www.cs.unibo.it/~renzo/so/pratiche/2009.01.15.pdf
+URL: http://www.cs.unibo.it/~renzo/so/pratiche/2002-02-22.pdf
 
 @author: Tommaso Ognibene
 */
@@ -21,37 +21,52 @@ extern void run(int argc, char *argv[])
 	if (argc < 2)
 		printAndDie("The function requires at least one parameter to be passed in.");
 
-	// File path
-	char *path = argv[2];
 
-	// Number of arguments
-	int n = argc - 2;
-
-	// Arguments
-    char **command = (char **) malloc(sizeof (char *) * (n + 1));
-    int i;
-    for (i = 0; i < n; i++)
-    	command[i] = argv[i + 2];
-    command[i] = NULL;
-
-    runProcess(path, command);
 }
 
-static void runProcess(char *path, char *command[])
+static void runProcess(char *path, char *command[], int n)
 {
-	pid_t pid;
+	pid_t pid, next;
+	int i, count;
+	int fd[n][2];
+	char buffer[32];
 
-	if ((pid = fork()) < 0)
-		errorAndDie("fork");
-
-	// Child process
-	if (pid == 0)
+	// Create n encapsulated processes
+	i = 1;
+	do
 	{
-		if (execvp(path, command) < 0)
-			errorAndDie("execvp");
+		// Create a new pipe
+		if (pipe(fd[i]) < 0)
+			errorAndDie("pipe");
 
-		exit(EXIT_SUCCESS);
+		pid = fork();
+		if (pid < 0)
+			errorAndDie("fork");
+
+		if (pid == 0)
+		{
+			// Close input side of pipe
+			close(fd[i][0]);
+
+			// Write on the pipe
+			sprintf(buffer, "%d", (int) getpid());
+			if (write(fd[i][1], buffer, 32) < 0)
+				errorAndDie("write");
+		}
+		i++;
 	}
+	while (pid == 0 && i < n);
+
+	// Close output side of pipe
+	close(fd[i][1]);
+
+	// Read on the pipe
+	count = read(fd[i][0], buffer, sizeof (buffer));
+	if (count < 0)
+		errorAndDie("read");
+
+
+
 
 	// Wait until the child process terminates
 	if (wait(NULL) < 0)

@@ -56,10 +56,7 @@ void scanDirectory(char *dir)
 
 	// Check if any errors occurred
 	if (result < 0)
-	{
-		perror("scandir()");
-		exit(EXIT_FAILURE);
-	}
+		errorAndDie("scandir");
 
 	// Loop through directory entries
 	for(iterator = 0; iterator < result; iterator++)
@@ -87,10 +84,8 @@ void printHardLinks(char *dir)
 
 	// Check if any errors occurred
 	if (result < 0)
-	{
-		perror("scandir()");
-		exit(EXIT_FAILURE);
-	}
+		errorAndDie("scandir");
+
 
 	// Check if directory is empty
 	if (!result) return;
@@ -109,8 +104,7 @@ void printHardLinks(char *dir)
 	}
 }
 
-// Exercise 1
-int run1(int argc, char *argv[])
+extern void run(int argc, char *argv[])
 {
     char cwd[1024];
 
@@ -120,10 +114,8 @@ int run1(int argc, char *argv[])
     	// ... == 0) => Use the current directory
     	case 1:
     		if (!getcwd(cwd, sizeof(cwd)))
-    		{
-    			perror("getcwd()");
-    			exit(EXIT_FAILURE);
-    		}
+    			errorAndDie("getcwd");
+
     		scanDirectory(cwd);
     		exit(EXIT_SUCCESS);
     	// ... == 1) => Use the given directory
@@ -132,35 +124,6 @@ int run1(int argc, char *argv[])
     		exit(EXIT_SUCCESS);
     	// ... > 1) => Wrong input
     	default:
-    		printf("The function requires 0 or 1 parameters.\n");
-    		exit(EXIT_FAILURE);
-    }
-}
-
-// Exercise 2
-int run2(int argc, char *argv[])
-{
-    char cwd[1024];
-
-    // If (number of parameters ...
-    switch(argc)
-    {
-    	// ... == 0) => Use the current directory
-    	case 1:
-    		if (!getcwd(cwd, sizeof(cwd)))
-    		{
-    			perror("getcwd()");
-    			exit(EXIT_FAILURE);
-    		}
-    		printHardLinks(cwd);
-    		exit(EXIT_SUCCESS);
-    	// ... == 1) => Use the given directory
-    	case 2:
-    		printHardLinks(argv[1]);
-    		exit(EXIT_SUCCESS);
-    	// ... > 1) => Wrong input
-    	default:
-    		printf("The function requires 0 or 1 parameters.\n");
-    		exit(EXIT_FAILURE);
+    		printAndDie("The function requires 0 or 1 parameters.");
     }
 }
