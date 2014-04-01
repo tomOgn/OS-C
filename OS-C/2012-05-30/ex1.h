@@ -113,7 +113,7 @@ static inline int isSpace(int c)
     return c == ' ' || c == '\t';
 }
 
-static inline int getLine(char *line, char *delimiter, FILE *fp, char *buffer, size_t buflen)
+static inline void getLine(char *line, char *delimiter, FILE *fp, char *buffer, size_t buflen)
 {
     char *end = buffer + buflen - 1; /* Allow space for null terminator */
     char *dst = buffer;
@@ -146,7 +146,6 @@ static inline int getLine(char *line, char *delimiter, FILE *fp, char *buffer, s
 
 		for (i = 1; i < count; i++)
 		{
-			int lenght = lengthWord(char *line, int start);
 
 		}
 			tokens[i] = strtok(NULL, " ");
@@ -169,7 +168,7 @@ static inline int getLine(char *line, char *delimiter, FILE *fp, char *buffer, s
     	c = getc(fp);
     }
     *dst = '\0';
-    return((c == EOF && dst == buffer) ? EOF : dst - buffer);
+    //return((c == EOF && dst == buffer) ? EOF : dst - buffer);
 }
 
 /*

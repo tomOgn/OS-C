@@ -24,11 +24,11 @@ static inline void printAndDie(const char *msg);
 extern void run(int argc, char *argv[])
 {
 	if (argc != 2)
-		printAndDie("The function requires only one parameter to be passed in.\n");
+		printAndDie("The function requires only one parameter to be passed in.");
 
 	int pid = atoi(argv[1]);
 	if (!isProcess(pid))
-		printAndDie("The parameter should be a running process.\n");
+		printAndDie("The parameter should be a running process.");
 
 	signalRepeater(pid);
 }

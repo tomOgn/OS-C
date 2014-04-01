@@ -18,7 +18,7 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2009.02.12.pdf
 #include <unistd.h>
 
 // Constants
-#define BUFFER_SIZE 1024
+#define BufferSize 1024
 
 // Function declarations
 static inline void errorAndDie(const char *msg);
@@ -45,7 +45,7 @@ static inline void pollNamedPipes(char *name[], int n)
 {
 	int	i, fd, count, streams;
 	struct pollfd fds[n];
-	char buffer[BUFFER_SIZE];
+	char buffer[BufferSize];
 
 	for (i = 0; i < n; i++)
 	{

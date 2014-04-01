@@ -3,8 +3,6 @@
 #define FUNREPO_H
 
 // Dependencies
-#include "../const.h"
-
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,23 +16,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/inotify.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 // Constants
-// Max number of events to process at one go
-#define MAX_EVENTS 1024
-// Max lenght of the filename
-#define LEN_NAME 16
-// Size of one event
-#define EVENT_SIZE (sizeof (struct inotify_event))
-// Buffer to store the events
-#define BUF_LEN (MAX_EVENTS * (EVENT_SIZE + LEN_NAME))
-#define MaxLenArr 128 // Max length array
-#define MaxLenStr 256 // Max length string
-#define BUFFER_SIZE 1024
+#define KB         1024
+#define True       1
+#define False      0
+#define Success    True
+#define Failure    False
+#define MaxEvents  1024
+#define EventSize  (sizeof (struct inotify_event))
+#define MaxLenArr  128
+#define MaxLenStr  256
+#define BufferSize 1024
 
 // Data types
 typedef struct
@@ -49,43 +48,583 @@ typedef struct
 	char *env[2];
 } Process;
 
+typedef struct
+{
+	int n;
+} sharedRegion;
+
 // Function declarations
-static void compareDirectories(char *dirA, char *dirB);
-static inline void errorAndDie(const char *msg);
-int filterExtensions(const struct dirent *entry);
-int filterNames(const struct dirent *entry);
-static inline char *getAbsolutePath(char *dirPath, char *filePath);
-static inline void getCurrentProcesses(void);
-static int getLenghtOfLine(char *path, int theLine, int *lenght);
-static inline int getSizeFile(char *path, off_t *size);
-static inline int getSoftLink(char *filePath, char **softLink);
-static int hasExtension(const char *fileName, const char **extensions, int n);
-int iNodeComparison(const struct dirent **a, const struct dirent **b);
-static inline void inverseArray(int x[], int n);
-static inline int isDirectory(char *path);
-static inline int isExecutable(char *path);
-static inline int isFile(char *path);
-static inline int isHiddenFile(char *path);
-static inline int isInteger(char *n);
-static inline int isNatural(int n);
-static inline int isNumber(char *text);
-static inline int isProcess(int pid);
-static inline int isSignalNumber(int n);
-static inline int isTextFile(char *path);
-static inline int max(int a[], int n);
+static inline int      areEqual(int x[], int y[], int n);
+static int             compareAlphabetic(const void *s1, const void *s2);
+static void            compareDirectories(char *dirA, char *dirB);
+static inline void     errorAndDie(const char *msg);
+int                    filterExtensions(const struct dirent *entry);
+int                    filterNames(const struct dirent *entry);
+static inline char *   getAbsolutePath(char *dirPath, char *filePath);
+static inline void     getCurrentProcesses(void);
+static int             getLenghtOfLine(char *path, int theLine, int *lenght);
+static inline int      getSizeFile(char *path, off_t *size);
+static inline int      getSoftLink(char *filePath, char **softLink);
+static int             hasExtension(const char *fileName, const char **extensions, int n);
+int                    iNodeComparison(const struct dirent **a, const struct dirent **b);
+static inline void     inverseArray(int x[], int n);
+static inline int      inverseFile(char *pathSrc, char *pathDst, off_t chunk);
+static inline int      isDirectory(char *path);
+static inline int      isExecutable(char *path);
+static inline int      isFile(char *path);
+static inline int      isHiddenFile(char *path);
+static inline int      isInteger(char *n);
+static inline int      isNatural(int n);
+static inline int      isNumberR(char *text);
+static inline int      isNumber(char *str);
+static inline int      isProcess(int pid);
+static inline int      isSignalNumber(int n);
+static inline int      isTextFile(char *path);
+static inline int      max(int a[], int n);
 static inline Process *parseArguments(int argc, char **argv);
-static inline void pollNamedPipes(char *name[], int n);
-static inline void printArray(int x[], int n);
-static inline void printAndDie(const char *msg);
-static inline void readPipe(int fd);
-static inline void runProcess(char *path, char *command[]);
-static inline void runProcessN(Process *process, int n);
-static inline int sameContent(FILE *f1, FILE *f2);
-static void scanDirectory(char *dir);
-static inline void simplePipe(void);
-static inline void signalRepeater(int pid);
-static void spyDirectory(char *directory);
-static inline void writePipe(int fd);
+static inline void     pollNamedPipes(char *name[], int n);
+static inline void     printArray(int x[], int n);
+static inline void     printArrayR(char **x, int n);
+static inline void     printAndDie(const char *msg);
+static inline void     printDirectory(char *path);
+static inline void     readPipe(int fd);
+static inline void     redirectOutputN(int n);
+static inline void     runProcess(char *path, char *command[]);
+static inline void     runProcessN(Process *process, int n);
+static inline int      sameContent(FILE *f1, FILE *f2);
+static void            scanDirectory(char *dir);
+static inline void     signalRepeater(int pid);
+static inline void     simplePipe(void);
+static void            spyDirectory(char *directory);
+static inline void     testPing(char *message, int times);
+static inline void     testTokenRing(int n);
+static inline void     writePipe(int fd);
+
+/*
+ * Check whether a string is a natural number or not
+ * Input:   str,  the string
+ * Output:  1,    if the string is a natural number
+ * 			0,    else
+ */
+static inline int isNumber(char *str)
+{
+	int i;
+
+	i = 0;
+	while (i < strlen(str) && isdigit(str[i]))
+		i++;
+
+	return i == strlen(str);
+}
+
+/*
+ * Create a token ring of n processes.
+ * The parent shall manage the token ring.
+ * Run a test showing the main logical steps in the parent standard output.
+ * Input: n, the number of processes
+ */
+static inline void testTokenRing(int n)
+{
+	const char fifoPath[] = "token.fifo";
+	char token[5] = "token";
+	char buffer[512];
+	int i, fifo;
+	pid_t pid;
+	ssize_t count;
+	TokenRing *it, *first, *temp;
+
+	// First element of the token ring
+	first = it = (TokenRing *) malloc(sizeof (TokenRing));
+
+	// Create the named pipe if it does not yet exist
+	if (access(fifoPath, F_OK) < 0)
+		if (mkfifo(fifoPath, S_IRWXU) < 0)
+			errorAndDie("mkfifo");
+
+	for (i = 0; i < n; i++)
+	{
+		// Create a pipe for token communication
+		if (pipe(it->Token) < 0)
+			errorAndDie("pipe");
+
+		// Create a pipe for output redirection
+		if (pipe(it->Output) < 0)
+			errorAndDie("pipe");
+
+		// Fork
+		pid = fork();
+		if (pid < 0)
+			errorAndDie("fork");
+
+		// Child process
+		if (pid == 0)
+		{
+			// Open named pipe for writing
+			fifo = open(fifoPath, O_WRONLY);
+			if (fifo < 0)
+				errorAndDie("open");
+
+			// Close output side
+			if (close(it->Token[1]) < 0)
+				errorAndDie("close");
+
+			// Close input side
+			if (close(it->Output[0]) < 0)
+				errorAndDie("close");
+
+			// Re-direct the standard output
+			if (dup2(it->Output[1], STDOUT_FILENO) < 0)
+				errorAndDie("dup2");
+
+			while (True)
+			{
+				// Clear the buffer
+				memset(buffer, 0, sizeof (buffer));
+
+				// Wait for the token
+				count = read(it->Token[0], buffer, sizeof (buffer));
+				if (count < 0)
+					errorAndDie("read");
+
+				fprintf(stdout, "[slave #%d] Received the token from Master.\n", getpid());
+				fprintf(stdout, "[slave #%d] I'm gonna do some stuff now.\n", getpid());
+				fflush(stdout);
+				sleep(2);
+				fprintf(stdout, "[slave #%d] Giving back the token to Master.\n", getpid());
+				fflush(stdout);
+
+				// Give the token back
+				count = write(fifo, token, sizeof (token));
+				if (count < 0)
+					errorAndDie("write");
+			}
+
+			// Close the pipes
+			if (close(it->Token[0]) < 0 || close(it->Output[1]) < 0 || close(fifo) < 0)
+				errorAndDie("close");
+
+			exit(EXIT_SUCCESS);
+		}
+
+		// Close unused sides of the pipes
+		if (close(it->Token[0]) < 0 || close(it->Output[1]) < 0)
+			errorAndDie("close");
+
+		it->Pid = pid;
+
+		if (i + 1 == n)
+			break;
+
+		it->Next = (TokenRing *) malloc(sizeof (TokenRing));
+		temp = it;
+		it = it->Next;
+		it->Prev = temp;
+	}
+	it->Next = first;
+	first->Prev = it;
+
+	// Open named pipe for reading
+	fifo = open(fifoPath, O_RDONLY);
+	if (fifo < 0)
+		errorAndDie("open");
+
+	// Manage the token ring
+	it = first;
+	while (True)
+	{
+		// Clear the buffer
+		memset(buffer, 0, sizeof (buffer));
+
+		// Assign the token
+		printf("[Master] Assigning the token to slave #%d\n", it->Pid);
+		count = write(it->Token[1], token, sizeof (token));
+		if (count < 0)
+			errorAndDie("write");
+
+		// Redirect the children output
+		for (i = 0; i < 2; i++)
+		{
+			count = read(it->Output[0], buffer, sizeof (buffer));
+			if (count < 0)
+				errorAndDie("read");
+
+			if (write(STDOUT_FILENO, buffer, count) < 0)
+				errorAndDie("write");
+		}
+
+		// Wait for the token in return
+		count = read(fifo, buffer, sizeof (buffer));
+		if (count < 0)
+			errorAndDie("read");
+		printf("[Master] Received the token from slave #%d\n", it->Pid);
+
+		it = it->Next;
+	}
+
+	// Close the pipes
+	if (close(it->Token[1]) < 0 || close(it->Output[0]) < 0 || close(fifo) < 0)
+		errorAndDie("close");
+
+	// Remove the named pipe
+	if (unlink(fifoPath) < 0)
+		errorAndDie("unlink");
+}
+
+/*
+ * Run n copies of a process.
+ * Redirect standard output from children to the parent.
+ * Input: n, number of children
+ */
+static inline void redirectOutputN(int n)
+{
+	char buf[4096];
+	int started, terminated;
+	int **fd;
+	pid_t pid;
+	ssize_t count;
+
+	// Initialize file descriptors to be used for the pipeline
+	fd = (int **) malloc(sizeof (int *) * n);
+	for (started = 0; started < n; started++)
+		fd[started] = (int *) malloc (sizeof (int) * 2);
+
+	// For each copy
+	for (started = 0; started < n; started++)
+	{
+		// Create a new pipe
+		if (pipe(fd[started]) < 0)
+			errorAndDie("pipe");
+
+		// Fork
+		pid = fork();
+		if (pid < 0)
+			errorAndDie("fork");
+
+		// Child process
+		if (pid == 0)
+		{
+			// Close input side of pipe
+			close(fd[started][0]);
+
+			// Re-direct the standard output into the pipe
+			if (dup2(fd[started][1], STDOUT_FILENO) < 0)
+				errorAndDie("dup2");
+
+			// Set the environment variable
+			printf("Hello from %d\n", getpid());
+
+			exit(EXIT_SUCCESS);
+		}
+
+		// Close output side of pipe
+		close(fd[started][1]);
+
+		// Read on the pipe
+		while ((count = read(fd[started][0], buf, sizeof (buf))) > 0)
+		{
+			if (write(1, buf, count) < 0)
+				errorAndDie("write");
+
+			memset(buf, 0, sizeof (buf));
+		}
+		if (count < 0)
+			errorAndDie("read");
+	}
+
+	// Wait processes
+	for (terminated = 0; terminated < started; terminated++)
+		if (wait(NULL) < 0)
+			errorAndDie("wait");
+}
+
+/*
+ * Inizialize a shared memory object.
+ * Input:  name, shared memory object' name
+ * Output: pointer to the shared memory object
+ * Require: sys/mman.h
+ */
+static inline sharedRegion *setSharedMemory(const char *name)
+{
+	int fd;
+
+	// Create a shared memory object
+	fd = shm_open(name, O_CREAT | O_TRUNC | O_RDWR, 0666);
+	if (fd < 0)
+		errorAndDie("shm_open");
+
+	// Set shared memory size
+	if (ftruncate(fd, sizeof (sharedRegion)) < 0)
+		errorAndDie("ftruncate");
+
+	// Establish a mapping between process address space and shared memory
+	ptr = mmap(0, sizeof (sharedRegion), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (ptr == MAP_FAILED)
+		errorAndDie("mmap");
+
+	return ptr;
+}
+
+/*
+ * Comparison function to sort alphabetically.
+ * Input:  s1, sentence 1
+ *         s2, sentence 2
+ * Output: 1,  if sentence 1 has a greater value than sentence 2
+ *         0,  else
+ */
+static int compareAlphabetic(const void *s1, const void *s2)
+{
+    const char **i1 = (const char **)s1;
+    const char **i2 = (const char **)s2;
+
+    return strcmp(*i1, *i2);
+}
+
+/*
+ * Print directory entries in reverse alphabetic order.
+ * Input: path, path to the directory
+ */
+static inline void printDirectory(char *path)
+{
+	DIR *root;
+	struct dirent *entry;
+	char **file;
+	int n, size;
+
+	// Open directory
+	root = opendir(path);
+	if (!root)
+		errorAndDie("opendir");
+
+	// Initialize variables
+	n = -1;
+	size = 100 * sizeof (char *);
+	file = (char **) malloc(size);
+	if (!file)
+		errorAndDie("malloc");
+
+	// Get directory entries
+	entry = readdir(root);
+	while (entry)
+	{
+		// Adapt the array size to the number of entries
+		n++;
+		if (n == size)
+		{
+			size *= 2;
+			file = (char **) realloc(file, size);
+			if (!file)
+				errorAndDie("realloc");
+		}
+
+		// Get the entry name
+		file[n] = (char *) malloc(sizeof (char) * MaxLenStr);
+		if (!file[n])
+			errorAndDie("malloc");
+
+		memset(file[n], 0, sizeof (char) * MaxLenStr);
+		strcpy(file[n], entry->d_name);
+
+		entry = readdir(root);
+	}
+
+	if (n == 0)
+		printAndDie("The directory is empty.");
+
+	// Sort alphabetically
+	qsort(file, n, sizeof (char *), compareAlphabetic);
+
+	// Print in reverse order
+	printArrayR(file, n);
+}
+
+/*
+ * Inverse a file chunk by chunk.
+ * Input:  pathSrc, path to the source file
+ *         pathDst, path to the destination file
+ *         chunk,   chunk of bytes
+ * Output: 1, Success
+ *         0, Failure
+ */
+static inline int inverseFile(char *pathSrc, char *pathDst, off_t chunk)
+{
+	off_t offset, size;
+	char *buffer;
+	int src, dst;
+	mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // Full access
+
+	// Pre-conditions: source exists, destination does not
+	if (!getSizeFile(pathSrc, &size) || isFile(pathDst))
+		return Failure;
+
+	// Open source file
+	src = open(pathSrc, O_RDONLY);
+	if (src < 0)
+		errorAndDie("open");
+
+	// Create destination file
+	dst = creat(pathDst, mode);
+	if (dst < 0)
+		errorAndDie("creat");
+
+	// Set size of destination
+	if (ftruncate(dst, size) < 0)
+		errorAndDie("ftruncate");
+
+	// Define the content buffer
+	buffer = (char *) malloc(chunk * sizeof (char));
+
+	// Inverse the file chunk by chunk
+	for (offset = 0; offset + chunk <= size; offset += chunk)
+	{
+		// Clear buffer
+		memset(buffer, 0, chunk);
+
+		// Read from source
+		if (pread(src, buffer, chunk, offset) < 0)
+			errorAndDie("pread");
+
+		// Inverse data
+		inverseArray(buffer, chunk);
+
+		// Write to destination
+		if (pwrite(dst, buffer, chunk, size - offset - chunk) < 0)
+			errorAndDie("pwrite");
+	}
+
+	// Check if there is a last minor chunk to process
+	if (offset != size)
+	{
+		// Clear buffer
+		memset(buffer, 0, chunk);
+
+		// Read from source
+		if (pread(src, buffer, size - offset, offset) < 0)
+			errorAndDie("pread");
+
+		// Inverse data
+		inverseArray(buffer, size - offset);
+
+		// Write to destination
+		if (pwrite(dst, buffer, size - offset, 0) < 0)
+			errorAndDie("pwrite");
+	}
+
+	// Close file descriptors
+	if (close(src) < 0 || close(dst) < 0)
+		errorAndDie("close");
+
+    // Garbage collection
+	free(buffer);
+
+	return Success;
+}
+
+/*
+ * Check if two array have the same elements.
+ * Input:  x, array 1
+ *         y, array 2
+ *         n, array size
+ * Output: 1, if they are equal
+ *         0, else
+ */
+static inline int areEqual(int x[], int y[], int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (x[i] != y[i])
+			return False;
+
+	return True;
+}
+
+/*
+ * Ping Test
+ * Create a child process. Send a message n times and check the reply.
+ * Count the overall elapsed time.
+ * Input: message, the message to send
+ *        times,   the n times
+ */
+static inline void testPing(char *message, int times)
+{
+	clock_t start, end;
+	double elapsed;
+	pid_t pid;
+	int i;
+	int fd[2][2];
+	const int ToChild = 0, FromChild = 1, Lenght = strlen(message) + 1;
+	char buffer[Lenght];
+
+	// Create two pipes
+	if (pipe(fd[ToChild]) < 0)
+		errorAndDie("pipe");
+
+	if (pipe(fd[FromChild]) < 0)
+		errorAndDie("pipe");
+
+	// Fork
+	pid = fork();
+	if (pid < 0)
+		errorAndDie("fork");
+
+	// Child process
+	if (pid == 0)
+	{
+		// Close input side of pipe FromChild
+		close(fd[FromChild][0]);
+
+		// Close output side of pipe ToChild
+		close(fd[ToChild][1]);
+
+		while (1)
+		{
+			// Read on the pipe ToChild
+			if (read(fd[ToChild][0], buffer, Lenght) < 0)
+				errorAndDie("read");
+
+			// Write on the pipe FromChild
+			if (write(fd[FromChild][1], buffer, Lenght) < 0)
+				errorAndDie("write");
+		}
+	}
+
+	// Close input side of pipe ToChild
+	close(fd[ToChild][0]);
+
+	// Close output side of pipe FromChild
+	close(fd[FromChild][1]);
+
+	// Start time
+	start = clock();
+
+	// Ping Test
+	for (i = 0; i < times; i++)
+	{
+		// Write on the pipe ToChild
+		if (write(fd[ToChild][1], message, Lenght) < 0)
+			errorAndDie("write");
+
+		// Read on the pipe FromChild
+		if (read(fd[FromChild][0], buffer, Lenght) < 0)
+			errorAndDie("read");
+
+		if (strcmp(message, buffer))
+			printAndDie("Ping Test failed!\nThe child process has sent back a wrong message.");
+	}
+
+	// Stop time
+	end = clock();
+
+	// Kill child process
+	kill(pid, SIGTERM);
+
+	// Print elapsed time
+	elapsed = ((double) (end - start)) / CLOCKS_PER_SEC;
+	printf("Ping Test succeeded!\n");
+	printf("Test Message = %s\n", message);
+	printf("Repetitions  = %d\n", times);
+	printf("Elapsed Time = %0.5f\n", elapsed);
+}
 
 /*
  * Multiplex I/O over a set of named pipes.
@@ -97,7 +636,7 @@ static inline void pollNamedPipes(char *name[], int n)
 {
 	int	i, fd, count, streams;
 	struct pollfd fds[n];
-	char buffer[BUFFER_SIZE];
+	char buffer[BufferSize];
 
 	for (i = 0; i < n; i++)
 	{
@@ -214,7 +753,7 @@ static inline void getCurrentProcesses(void)
 /*
  * Get a soft link from a given file path
  * Input:   filePath, the file path
- * Output:  1,        if success
+ * Output:  1,        if Success
  * 			0,        else
  *
  * 			softLink, the soft link
@@ -243,7 +782,7 @@ static inline int getSoftLink(char *filePath, char **softLink)
  */
 int filterNames(const struct dirent *entry)
 {
-	return entry->d_type == DT_DIR && isNumber(entry->d_name);
+	return entry->d_type == DT_DIR && isNumberR(entry->d_name);
 }
 
 /*
@@ -252,13 +791,13 @@ int filterNames(const struct dirent *entry)
  * Output:  1,    if the string is only made by numbers
  * 			0,    else
  */
-static inline int isNumber(char *text)
+static inline int isNumberR(char *text)
 {
 	regex_t regExp;
 	char *pattern = "[0-9]";
 	int status;
 
-    if (regcomp(&regExp, pattern, REG_EXTENDED) != 0)
+    if (regcomp(&regExp, pattern, REG_EXTENDED) < 0)
     	errorAndDie("regcomp");
 
     status = regexec(&regExp, text, regExp.re_nsub, NULL, 0);
@@ -476,7 +1015,7 @@ static inline void signalRepeater(int pid)
 		if (sigdelset(&sigSet, terminatingSignals[i++]) < 0)
 			errorAndDie("sigdelset");
 
-	while (TRUE)
+	while (True)
 	{
 		if (sigwait(&sigSet, &sigNum) < 0)
 			errorAndDie("sigwait");
@@ -488,8 +1027,8 @@ static inline void signalRepeater(int pid)
 /*
  * Check whether a PID refers to a running process or not.
  * Input:  pid,   the PID to check
- * Output: TRUE,  if yes
- *         FALSE, otherwise
+ * Output: True,  if yes
+ *         False, otherwise
  */
 static inline int isProcess(int pid)
 {
@@ -522,27 +1061,41 @@ static inline void printArray(int x[], int n)
 {
 	int i;
 
-	for(i = 0; i < n; i++)
+	for (i = 0; i < n; i++)
 		printf("%d ", x[i]);
 	printf("\n");
 }
 
 /*
- * Invert the elements of an array.
+ * Print the elements of an array in reverse order.
  * Input:  x, array
  *         n, array size
  */
-static inline void inverseArray(int x[], int n)
+static inline void printArrayR(char **x, int n)
 {
-	int i, tmp;
+	int i;
 
-	n--;
-	for(i = 0; i < n / 2; i++)
+	for (i = n - 1; i >= 0; i--)
+		printf("%s\n", x[i]);
+	printf("\n");
+}
+
+/*
+ * Invert the elements of an array. In-place, with swapping.
+ * Input:  x, array
+ *         n, array size
+ */
+static inline void inverseArray(char *x, int n)
+{
+	int left, right, temp;
+
+	right = n - 1;
+	for (left = 0; left < n / 2; left++)
 	{
-		tmp = x[i];
-		x[i] = x[n];
-		x[n] = tmp;
-		n--;
+		temp = x[left];
+		x[left] = x[right];
+		x[right] = temp;
+		right--;
 	}
 }
 
@@ -651,14 +1204,14 @@ int filterExtensions(const struct dirent *entry)
 static int hasExtension(const char *fileName, const char **extensions, int n)
 {
 	char *extension = strrchr(fileName, '.') + 1;
-	int output = FALSE;
+	int output = False;
 	int i = 0;
 
 	if (extension)
 		while (i < n && !output)
 		{
 			if (!strcmp(extension, extensions[i]))
-				output = TRUE;
+				output = True;
 			else
 				i++;
 		}
@@ -670,8 +1223,8 @@ static int hasExtension(const char *fileName, const char **extensions, int n)
  * Check, byte by byte, if two files have same content.
  * Input:   f1,    pointer to file 1
  * 		    f2,    pointer to file 2
- * Output:  TRUE,  if they have the same content
- * 			FALSE, else
+ * Output:  True,  if they have the same content
+ * 			False, else
  */
 static inline int sameContent(FILE *f1, FILE *f2)
 {
@@ -742,19 +1295,18 @@ void scanDirectory(char *dir)
 	free(files);
 }
 
+/*
+ * Spy a directory. Check when a file is created, changed and deleted.
+ * Input: directory, the directory
+ */
 static void spyDirectory(char *directory)
 {
 	int fd, wd, length, i;
-	char buffer[BUF_LEN];
-	char **path = (char **) malloc(sizeof(char **) * 2);
+	char buffer[BufferSize];
 	struct inotify_event *event;
-
-	path[0] = directory;
-	i = 0;
 
 	// Create an inotify instance
 	fd = inotify_init();
-
 	if (fd < 0)
 		errorAndDie("inotify_init");
 
@@ -763,16 +1315,15 @@ static void spyDirectory(char *directory)
 	if (wd < 0)
 		errorAndDie("inotify_add_watch");
 
-	printf("Watching %s\n", directory);
+	printf("Watching %s...\n", directory);
 
-	while (TRUE)
+	while (True)
 	{
-		i = 0;
-		length = read(fd, buffer, BUF_LEN);
-
+		length = read(fd, buffer, BufferSize);
 		if (length < 0)
 			errorAndDie("read");
 
+		i = 0;
 		while (i < length)
 		{
 			event = (struct inotify_event *) &buffer[i];
@@ -786,11 +1337,11 @@ static void spyDirectory(char *directory)
 						printf("The file %s was created.\n", event->name);
 				}
 			}
-			i += EVENT_SIZE + event->len;
+			i += EventSize + event->len;
 		}
 	}
 
-	// Clean up
+	// Garbage collection
 	inotify_rm_watch(fd, wd);
 	close(fd);
 }
@@ -854,12 +1405,12 @@ static int getLenghtOfLine(char *path, int theLine, int *lenght)
 	if (line == theLine)
 	{
 		*lenght = count;
-		output = TRUE;
+		output = True;
 	}
 	else
 	{
 		*lenght = 0;
-		output = FALSE;
+		output = False;
 	}
 
 	return output;
@@ -883,7 +1434,7 @@ static inline int isDirectory(char *path)
 
 /*
  * Check if a file is a regular file.
- * If yes, return its size in Bytes.
+ * If yes, return its size in bytes.
  * Input:  path, file path
  * Output: 1,    if it is a regular file
  * 		   0,    else
@@ -893,18 +1444,20 @@ static inline int isDirectory(char *path)
 static inline int getSizeFile(char *path, off_t *size)
 {
 	struct stat info;
-	int output = FALSE;
 
-	if (stat(path, &info) < 0)
-		errorAndDie("stat");
-
-	if (info.st_mode & S_IFREG)
+	if (isFile(path))
 	{
-		output = TRUE;
-		*size = info.st_size;
+		if (stat(path, &info) < 0)
+			errorAndDie("stat");
+
+		if (info.st_mode & S_IFREG)
+		{
+			*size = info.st_size;
+			return True;
+		}
 	}
 
-	return output;
+	return False;
 }
 
 /*
@@ -943,20 +1496,22 @@ static inline int isHiddenFile(char *path)
 }
 
 /*
- * Check if a file is regular
+ * Check if a file exists.
  * Input:  path, file path
- * Output: 1,    if the file is a regular file
+ * Output: 1,    if the file exists
  * 		   0,    else
  */
 static inline int isFile(char *path)
 {
-	struct stat info;
+	FILE *file = fopen(path, "r");
 
-	// Get file attributes
-	if (!lstat(path, &info) < 0)
-		errorAndDie("lstat");
+	if (file)
+	{
+		fclose(file);
+		return True;
+	}
 
-	return S_ISREG(info.st_mode);
+	return False;
 }
 
 #endif

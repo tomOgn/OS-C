@@ -19,14 +19,16 @@
 //#include "2011-01-19/ex1.h"
 //#include "2010-09-13/writer.h"
 //#include "2010-09-13/reader.h"
-#include "2010-07-19/ex1.h"
+//#include "2010-07-19/ex1.h"
+//#include "2010-06-21/ex1.h"
+//#include "2010-02-03/ex1.h"
 //#include "2009-02-12/ex1.h"
 //#include "2009-02-12/ex2.h"
 //#include "2009-09-23/ex1.h"
 //#include "2009-09-23/ex2.h"
 //#include "2009-07-14/ex1.h"
 //#include "2009-07-14/ex2.h"
-//#include "2005-02-10/ex1.h"
+#include "2005-02-10/ex1.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,9 +36,6 @@
 // Entry point
 int main(int argc, char *argv[])
 {
-//	int c = 3;
-//	char *v[] = {"ex", "p1", "p2"};
-
 	run(argc, argv);
 
 	printf("Done!\n");
