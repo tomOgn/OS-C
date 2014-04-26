@@ -77,17 +77,17 @@ static inline void pollNamedPipes(char *name[], int n)
 			// Check for available data
 			if ((fds[i].revents & POLLIN) != 0)
 			{
+				// Clear the buffer
+				memset(buffer, 0, sizeof (buffer));				
+				
 				// Fill the buffer
 				count = read(fds[i].fd, &buffer, sizeof (buffer));
 				if (count < 0)
 					errorAndDie("read");
 
-				// Deliver the buffer to the standard output
+				// Deliver the buffer
 				if (write(STDOUT_FILENO, buffer, count) < 0)
 					errorAndDie("write");
-
-				// Clear the buffer
-				memset(buffer, 0, sizeof (buffer));
 			}
 
 			// Check if the device has been disconnected

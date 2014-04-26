@@ -81,6 +81,7 @@ static inline int      isProcess(int pid);
 static inline int      isSignalNumber(int n);
 static inline int      isTextFile(char *path);
 static inline int      max(int a[], int n);
+static inline void     outputNamedPipe(char *name[], int n);
 static inline Process *parseArguments(int argc, char **argv);
 static inline void     pollNamedPipes(char *name[], int n);
 static inline void     printArray(int x[], int n);
@@ -99,6 +100,65 @@ static void            spyDirectory(char *directory);
 static inline void     testPing(char *message, int times);
 static inline void     testTokenRing(int n);
 static inline void     writePipe(int fd);
+
+/*
+ * Retrieve the output of the given named pipes.
+ * Input: name, the pipe names
+ *        n,    the number of pipes
+ */
+static inline void outputNamedPipe(char *name[], int n)
+{
+    int *fifos;
+    int ready, highest, buff_count, count, i, error;
+    fd_set set, tmp; // set of file descriptors
+    char buff[BufferSize];
+
+	// Clear the set
+	FD_ZERO(&set);
+
+	// Populate the set
+	fifos = (int *) malloc(sizeof(int) * n);
+	for (i = 0; i < n; i++)
+	{
+		printf("%s\n", name[i]);
+		fifos[i] = open(name[i], O_RDWR | O_NONBLOCK);
+		checkError(fifos[i], "open");
+
+		// Add the file descriptor to the set
+		FD_SET(fifos[i], &set);
+	}
+
+	// Get the highest-numbered file descriptor + 1
+	highest = max(fifos, n) + 1;
+
+	// Save a copy of the original set
+	memcpy((void *) &tmp, (void *) &set, sizeof(fd_set));
+
+	while (True)
+	{
+		// Block the program until I/O is ready on one or more of the file descriptors
+		ready = select(highest, &set, NULL, NULL, NULL);
+		checkError(ready, "select");
+
+		for (i = 0, count = 0; count < ready || i < n; i++)
+		{
+			// Test if the file descriptor is part of the set
+			if (!FD_ISSET(fifos[i], &set)) continue;
+
+			count++;
+			printf("Fifo: %d\n", i);
+			buff_count = read(fifos[i], &buff, BufferSize);
+			checkError(buff_count, "read");
+
+			printf("Read %d bytes\n", buff_count);
+			error = write(STDOUT_FILENO, buff, sizeof(char) * (unsigned int) buff_count);
+			checkError(error, "write");
+		}
+
+		// Restore the original set
+		memcpy((void *) &set,(void *) &tmp, sizeof(fd_set));
+	}
+}
 
 /*
  * Check whether a string is a natural number or not
@@ -270,7 +330,7 @@ static inline void testTokenRing(int n)
 		errorAndDie("unlink");
 }
 
-/*
+/*char buffer[Lenght];
  * Run n copies of a process.
  * Redirect standard output from children to the parent.
  * Input: n, number of children
