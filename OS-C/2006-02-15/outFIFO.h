@@ -1,9 +1,9 @@
 /*
 Prova Pratica di Laboratorio di Sistemi Operativi
-23 giugno 2009
+15 febbraio 2006
 Esercizio 1
 
-URL: http://www.cs.unibo.it/~renzo/so/pratiche/2009.06.23.pdf
+URL: http://www.cs.unibo.it/~renzo/so/pratiche/2006-02-15.pdf
 
 @author: Tommaso Ognibene
 */
@@ -15,22 +15,54 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2009.06.23.pdf
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/select.h>
-#include <limits.h>
 
 // Constants
-#define BUFFER PIPE_BUF
+#define BUFFER 1024
 
 // Function declarations
 static inline int isFile(char *path);
 static inline int max(int a[], int n);
 static inline void checkError(int error, const char *msg);
-static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
 static inline void outputNamedPipe(char *name[], int n);
+
+extern void run(int argc, char *argv[])
+{
+	// Sanity check
+	if (argc == 1)
+		printAndDie("Wrong number of parameters.");
+
+	int i, value;
+    struct stat info;
+	char *name[argc];
+
+	// Parse input
+	for (i = 1; i < argc; i++)
+	{
+		// If the file does not exist
+		if (!isFile(argv[i]))
+		{
+			// Create a named pipe
+			value = mkfifo(argv[i], S_IRWXU);
+			checkError(value, "mkfifo");
+		}
+		else
+		{
+			// Check if the file is a named pipe
+			value = stat(argv[i], &info);
+			checkError(value, "fstat");
+
+			if (!S_ISFIFO(info.st_mode))
+				printAndDie("Input error.");
+		}
+		name[i - 1] = argv[i];
+	}
+
+	outputNamedPipe(name, argc - 1);
+}
 
 /*
  * Retrieve the output of the given named pipes.
@@ -40,18 +72,18 @@ static inline void outputNamedPipe(char *name[], int n);
 static inline void outputNamedPipe(char *name[], int n)
 {
     int *fifos;
-    int ready, highest, buff_count, count, i, error;
-    fd_set set, tmp; // set of file descriptors
+    int ready, highest, buff_count, count, i, value;
+    fd_set set, tmp;
     char buff[BUFFER];
 
 	// Clear the set
 	FD_ZERO(&set);
 
 	// Populate the set
-	fifos = (int *) malloc(sizeof(int) * n);
+	fifos = (int *) malloc(sizeof (int) * n);
 	for (i = 0; i < n; i++)
 	{
-		printf("%s\n", name[i]);
+		// Open the named pipe
 		fifos[i] = open(name[i], O_RDWR | O_NONBLOCK);
 		checkError(fifos[i], "open");
 
@@ -63,7 +95,7 @@ static inline void outputNamedPipe(char *name[], int n)
 	highest = max(fifos, n) + 1;
 
 	// Save a copy of the original set
-	memcpy((void *) &tmp, (void *) &set, sizeof(fd_set));
+	memcpy((void *) &tmp, (void *) &set, sizeof (fd_set));
 
 	while (True)
 	{
@@ -77,50 +109,17 @@ static inline void outputNamedPipe(char *name[], int n)
 			if (!FD_ISSET(fifos[i], &set)) continue;
 
 			count++;
-			printf("Fifo: %d\n", i);
+
 			buff_count = read(fifos[i], &buff, BUFFER);
 			checkError(buff_count, "read");
 
-			printf("Read %d bytes\n", buff_count);
-			error = write(STDOUT_FILENO, buff, sizeof(char) * (unsigned int) buff_count);
-			checkError(error, "write");
+			value = write(STDOUT_FILENO, buff, sizeof (char) * buff_count);
+			checkError(value, "write");
 		}
 
 		// Restore the original set
-		memcpy((void *) &set,(void *) &tmp, sizeof(fd_set));
+		memcpy((void *) &set,(void *) &tmp, sizeof (fd_set));
 	}
-}
-
-extern void run(int argc, char *argv[])
-{
-	// Sanity check
-	if (argc == 1)
-		printAndDie("Wrong number of parameters.");
-
-	int i, error;
-    struct stat info;
-	char *name[argc];
-
-	for (i = 1; i < argc; i++)
-	{
-		// If the file does not exist
-		if (!isFile(argv[i]))
-		{
-			// Create a named pipe
-			error = mkfifo(argv[i], S_IRWXU);
-			checkError(error, "mkfifo");
-		}
-		else
-		{
-			error = stat(argv[i], &info);
-			checkError(error, "fstat");
-			if (!S_ISFIFO(info.st_mode))
-				printAndDie("Input error.");
-		}
-		name[i - 1] = argv[i];
-	}
-
-	outputNamedPipe(name, argc - 1);
 }
 
 /*
@@ -132,14 +131,10 @@ extern void run(int argc, char *argv[])
 static inline int isFile(char *path)
 {
 	FILE *file = fopen(path, "r");
-
 	if (file)
-	{
 		fclose(file);
-		return True;
-	}
 
-	return False;
+	return (file)? True: False;
 }
 
 /*
@@ -169,16 +164,6 @@ static inline void checkError(int error, const char *msg)
 {
 	if (error >= 0) return;
 
-	perror(msg);
-	exit(EXIT_FAILURE);
-}
-
-/*
- * Print error message and exit
- * Input: msg, the error message
- */
-static inline void errorAndDie(const char *msg)
-{
 	perror(msg);
 	exit(EXIT_FAILURE);
 }

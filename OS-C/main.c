@@ -28,9 +28,9 @@
 //#include "2009-09-23/ex2.h"
 //#include "2009-07-14/ex1.h"
 //#include "2009-07-14/ex2.h"
-//#include "2006-02-15/outFIFO.h"
+#include "2006-02-15/outFIFO.h"
 //#include "2005-02-10/ex1.h"
-#include "2005-06-27/linearAccelerator.h"
+//#include "2005-06-27/linearAccelerator.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,9 +38,7 @@
 // Entry point
 int main(int argc, char *argv[])
 {
-	int c = 2;
-	char *v[] = {"outFifo", "6"};
-	run(c, v);
+	run(argc, argv);
 
 	printf("Done!\n");
 	exit(EXIT_SUCCESS);

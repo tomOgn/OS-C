@@ -44,7 +44,6 @@ static inline void linearAccelerator(int n)
 	time_t startTime, stopTime;
 
 	// [1] Create the Linear Accelerator
-
 	// Create the last pipe used as a trigger
 	value = pipe(fd[n - 1]);
 	checkError(value, "pipe");
@@ -78,7 +77,7 @@ static inline void linearAccelerator(int n)
 		}
 	} while (i < n - 1 && pid == 0);
 
-	// [2] Trigger the Linear Accelerator
+	// [2] Trigger the Linear Accelerators
 	if (i == n - 1)
 	{
 		// Close input side

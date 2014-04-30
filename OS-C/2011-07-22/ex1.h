@@ -47,7 +47,7 @@ static int filterDirExecutable(const struct dirent *entry)
 	char *path = (char *) malloc((sizeof(cwd) + sizeof(entry->d_name) + 2) * sizeof(char *));
 	sprintf(path, "%s/%s", cwd, entry->d_name);
 
-	if (!strcmp(entry->d_name, "OS-C")) return FALSE;
+	if (!strcmp(entry->d_name, "OS-C")) return False;
 
 	return ((entry->d_type == DT_REG || entry->d_type == DT_LNK) && isExecutable(path));
 }

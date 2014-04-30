@@ -56,7 +56,7 @@ static inline void signalRepeater(int pid)
 		if (sigdelset(&sigSet, terminatingSignals[i++]) < 0)
 			errorAndDie("sigdelset");
 
-	while (TRUE)
+	while (True)
 	{
 		if (sigwait(&sigSet, &sigNum) < 0)
 			errorAndDie("sigwait");

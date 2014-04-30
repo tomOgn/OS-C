@@ -73,14 +73,14 @@ static inline int sameContent(FILE *f1, FILE *f2)
 static int hasExtension(const char *fileName, const char **extensions, int n)
 {
 	char *extension = strrchr(fileName, '.') + 1;
-	int output = FALSE;
+	int output = False;
 	int i = 0;
 
 	if (extension)
 		while (i < n && !output)
 		{
 			if (!strcmp(extension, extensions[i]))
-				output = TRUE;
+				output = True;
 			else
 				i++;
 		}

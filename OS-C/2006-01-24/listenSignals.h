@@ -49,7 +49,7 @@ static void listenSignals()
     sigemptyset(&sa.sa_mask);
     sigaction(NULL, &sa, NULL);
 
-    while (TRUE)
+    while (True)
         sleep(1);
 }
 
