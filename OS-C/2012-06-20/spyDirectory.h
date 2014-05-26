@@ -60,7 +60,7 @@ static void spyDirectory(char *directory)
 
 	printf("Watching %s:\n", directory);
 
-	while (TRUE)
+	while (True)
 	{
 		i = 0;
 		length = read(fd, buffer, BUF_LEN);

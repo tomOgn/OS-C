@@ -27,7 +27,7 @@ static inline void pollNamedPipes(int n, char *name[]);
 
 extern void run(int argc, char *argv[])
 {
-	// Pre-conditions
+	// Sanity check
 	if (argc != 3)
 		printAndDie("The function requires two parameters to be passed in.");
 

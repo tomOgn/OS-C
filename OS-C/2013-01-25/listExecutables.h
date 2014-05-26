@@ -3,7 +3,7 @@ Prova Pratica di Laboratorio di Sistemi Operativi
 20 giugno 2013
 Esercizio 1
 
-URL: http://www.cs.unibo.it/~renzo/so/pratiche/2013.05.29.pdf
+URL: http://www.cs.unibo.it/~renzo/so/pratiche/2013.01.25.pdf
 
 @author: Tommaso Ognibene
 */

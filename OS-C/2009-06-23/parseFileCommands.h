@@ -28,18 +28,18 @@ static inline int isRegularFile(char *path);
 extern void run(int argc, char *argv[])
 {
 	if (argc != 2)
-		printAndDie("The function requires only one parameter to be passed in.\n");
+		printAndDie("The function requires only one parameter to be passed in.");
 
 	char *path = argv[1];
 	if (!isRegularFile(path) && !isTextFile(path))
-		printAndDie("The parameter should be a textual file.\n");
+		printAndDie("The parameter should be a textual file.");
 
-
+	parseFileCommands(path, int theLine, int *lenght, FILE *st, char **command);
 }
 
 /*
  * Find a specific line in a text file and get its lenght (i.e. number of characters).
- * Inpstatic inline int isDirectory(char *path);ut:
+ * Input:
  * 			path,       file path
  * 			theLine,    line number
  * Output:

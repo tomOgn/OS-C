@@ -1,17 +1,18 @@
 /*
 Prova Pratica di Laboratorio di Sistemi Operativi
 23 gennaio 2014
-Esercizio 1
+Esercizio 2
 
 URL: http://www.cs.unibo.it/~renzo/so/pratiche/2014.01.23.pdf
 
 @author: Tommaso Ognibene
 */
-
+#include <dirent.h>
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -21,11 +22,22 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2014.01.23.pdf
 
 // Function declarations
 static inline int isTextFile(char *path);
-static inline int isHiddenFile(FILE *fp);
+static inline int isHiddenFile(char *path);
 static inline int isRegularFile(char *path);
 static int getLenghtOfLine(char *path, int theLine, int *lenght);
 static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
+static inline char *getAbsolutePath(char *dirPath, char *filePath);
+
+static inline char *getAbsolutePath(char *dirPath, char *filePath)
+{
+	int n = strlen(dirPath) + strlen(filePath);
+	char *absolutePath = (char *) malloc(n * sizeof(char *));
+
+	sprintf(absolutePath, "%s/%s", dirPath, filePath);
+
+	return absolutePath;
+}
 
 /*
  * Print error message and exit
@@ -86,12 +98,12 @@ static int getLenghtOfLine(char *path, int theLine, int *lenght)
 	if (line == theLine)
 	{
 		*lenght = count;
-		output = TRUE;
+		output = True;
 	}
 	else
 	{
 		*lenght = 0;
-		output = FALSE;
+		output = False;
 	}
 
 	return output;
@@ -127,8 +139,12 @@ static inline int isTextFile(char *path)
  * 			1,  if the file is an hidden file
  * 			0,  else
  */
-static inline int isHiddenFile(FILE *fp)
+static inline int isHiddenFile(char *path)
 {
+	FILE *fp = fopen(path, "r");
+	if (!fp)
+		errorAndDie("fopen");
+
 	return fgetc(fp) == '.';
 }
 
@@ -153,25 +169,33 @@ static inline int isRegularFile(char *path)
 
 extern void run(int argc, char *argv[])
 {
-	int count, n;
+	int total, count, n;
 	char *path;
+	int result, it;
+	struct dirent **files;
 
-	if (argc != 3)
-		printAndDie("The functions require only 3 parameters to be passed in.");
+	if (argc != 2)
+		printAndDie("The functions requires only one parameter to be passed in./n");
 
-	path = argv[1];
-	n = atoi(argv[2]);
-	count = 0;
+	total = 0;
+	n = atoi(argv[1]);
+	result = scandir(".", &files, NULL, NULL);
 
-	// If it is a text file and a regular file
-	if (isTextFile(path) && isRegularFile(path))
+	if (result < 0)
+		errorAndDie("scandir");
+
+	// Loop through directory entries
+	for(it = 0; it < result; it++)
 	{
-		// Get the lenght of the n-th line
-		if (getLenghtOfLine(path, n, &count))
-			printf("Lenght of line #%d = %d characters.\n",n, count);
-		else
-			printf("Line #%d does not exist.\n", n);
+		path = getAbsolutePath(".", files[it]->d_name);
+		count = 0;
+
+		if (isTextFile(path) && isRegularFile(path) && !isHiddenFile(path))
+			if (getLenghtOfLine(path, n, &count))
+				total += count;
 	}
+
+	printf("Total lenght = %d characters.\n", total);
 
 	exit(EXIT_SUCCESS);
 }

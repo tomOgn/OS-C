@@ -14,6 +14,7 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2011.02.15.pdf
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 // Data types
 typedef struct
@@ -23,12 +24,10 @@ typedef struct
 } Process;
 
 // Function declarations
-static inline void runProcess(Process *p);
 static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
-static inline void waitSignal(Process *process);
+static void runAndRepeatOnError(Process *process);
 static inline Process *parseArguments(int argc, char *argv[]);
-static inline void waitSignal(Process *process);
 
 extern void run(int argc, char *argv[])
 {
@@ -42,7 +41,7 @@ extern void run(int argc, char *argv[])
 	process = parseArguments(argc, argv);
 
 	// Run child process and signal to the parent its return value
-	waitSignal(process);
+	runAndRepeatOnError(process);
 }
 
 static inline Process *parseArguments(int argc, char *argv[])
@@ -59,47 +58,29 @@ static inline Process *parseArguments(int argc, char *argv[])
 	return process;
 }
 
-static inline void waitSignal(Process *process)
+/*
+ * Run a process. Repeat on error.
+ */
+static void runAndRepeatOnError(Process *process)
 {
-	int sigNum;
-	sigset_t sigSet;
-
-	// Initialize a signal set to full, including all signals
-	if (sigfillset(&sigSet) < 0)
-		errorAndDie("sigfillset");
+	pid_t pid;
+	int status;
 
 	do
 	{
-		printf("/n1/n");
-		runProcess(process);
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
 
-		if (sigwait(&sigSet, &sigNum) < 0)
-			errorAndDie("sigwait");
+		if (pid == 0)
+		{
+			execvp(process->filePath, process->command);
+			errorAndDie("execvp");
+		}
+
+		if (wait(&status) < 0)
+			errorAndDie("waitpid");
 	}
-	while (sigNum != 0);
-}
-
-/*
- * Run a specific process a signal the parent with the return value.
- * Input:	path,    	the path to the file to run
- *          command,    the list of arguments
- * Output:	void
- */
-static inline void runProcess(Process *process)
-{
-	pid_t pid, parent;
-
-	parent = getpid();
-	pid = fork();
-	if (pid < 0)
-		errorAndDie("fork");
-
-	// Child process
-	if (pid == 0)
-	{
-		kill(parent, execvp(process->filePath, process->command));
-		exit(EXIT_SUCCESS);
-	}
+	while (status != 0);
 }
 
 /*

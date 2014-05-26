@@ -29,7 +29,7 @@ typedef struct
 	// Command
 	char *cmd[MaxLenArr];
 
-	// Environment variables
+	// Environment variable
 	char *env[2];
 } Process;
 
@@ -41,7 +41,7 @@ static inline void printAndDie(const char *msg);
 
 extern void run(int argc, char *argv[])
 {
-	// Pre-conditions
+	// Sanity checking
 	if (argc < 3)
 		printAndDie("The functions requires at least 2 parameters to be passed in.");
 
@@ -98,15 +98,15 @@ static inline void runProcess(Process *process, int n)
 {
 	pid_t pid;
 	int started, terminated;
-	char buf[4096];
+	char buffer[4096];
 	ssize_t count;
 	int **fd;
 	extern char **environ;
 
 	// Initialize file descriptors to be used for the pipeline
-	fd = (int **) malloc(sizeof (int **) * n);
+	fd = (int **) malloc(sizeof (int *) * n);
 	for (started = 0; started < n; started++)
-		fd[started] = (int *) malloc (sizeof(int *) * 2);
+		fd[started] = (int *) malloc (sizeof (int *) * 2);
 
 	// For each copy
 	for (started = 0; started < n; started++)
@@ -116,15 +116,15 @@ static inline void runProcess(Process *process, int n)
 			errorAndDie("pipe");
 
 		// Fork
-		pid = fork();
-		if (pid < 0)
+		if ((pid = fork()) < 0)
 			errorAndDie("fork");
 
 		// Child process
 		if (pid == 0)
 		{
 			// Close input side of pipe
-			close(fd[started][0]);
+			if (close(fd[started][0]) < 0)
+				errorAndDie("close");
 
 			// Re-direct the standard output into the pipe
 			if (dup2(fd[started][1], STDOUT_FILENO) < 0)
@@ -135,27 +135,28 @@ static inline void runProcess(Process *process, int n)
 		    environ = process->env;
 
 			// Execute command
-			if (execvp(process->pth, process->cmd) < 0)
-				errorAndDie("execve");
-
-			exit(EXIT_SUCCESS);
+			execvp(process->pth, process->cmd);
+			errorAndDie("execvp");
 		}
 
 		// Close output side of pipe
-		close(fd[started][1]);
+		if (close(fd[started][1]) < 0)
+			errorAndDie("close");
 
 		// Read on the pipe
-		while ((count = read(fd[started][0], buf, sizeof(buf))) > 0)
+		while ((count = read(fd[started][0], buffer, sizeof (buffer))) > 0)
 		{
-			if (write(1, buf, count) < 0)
+			if (write(STDOUT_FILENO, buffer, count) < 0)
 				errorAndDie("write");
 
-			if (memset(buf, 0, 10) < 0)
-				errorAndDie("memset");
+			memset(buffer, 0, sizeof (buffer));
 		}
-
 		if (count < 0)
 			errorAndDie("read");
+
+		// Close input side of pipe
+		if (close(fd[started][0]) < 0)
+			errorAndDie("close");
 	}
 
 	// Wait processes

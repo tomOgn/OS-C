@@ -13,7 +13,6 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2011.07.22.pdf
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
-#include <openssl/hmac.h>
 #include <openssl/md5.h>
 #include <regex.h>
 #include <stdio.h>
@@ -27,12 +26,39 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2011.07.22.pdf
 
 // Function declarations
 static inline int isExecutable(char *path);
-static inline int isExecutable2(char *path);
 static void runConcurrentProcesses(char *paths[], char **argvs[], int n);
 static int filterDirExecutable(const struct dirent *entry);
+static inline void errorAndDie(const char *msg);
+static inline void printAndDie(const char *msg);
 
 // Global variables
 static char *cwd = ".";
+
+extern void run(int argc, char *argv[])
+{
+	struct dirent **file;
+	int count, i;
+	char **path;
+	char ***args;
+
+	count = scandir(cwd, &file, filterDirExecutable, NULL);
+	if (count < 0)
+		errorAndDie("scandir");
+
+	path = (char **) malloc(count * sizeof(char *));
+	args = (char ***) malloc(count * sizeof(char **));
+	for (i = 0; i < count; i++)
+	{
+		path[i] = (char *) malloc(sizeof(cwd) + sizeof(file[i]->d_name) + 2 * sizeof(char));
+		sprintf(path[i], "%s/%s", cwd, file[i]->d_name);
+
+		args[i] = (char **) malloc(2 * sizeof(char *));
+		args[i][0] = file[i]->d_name;
+		args[i][1] = NULL;
+	}
+
+	runConcurrentProcesses(path, args, count);
+}
 
 /*
  * Filter function for Directories
@@ -64,18 +90,6 @@ static inline int isExecutable(char *path)
 }
 
 /*
- * Check if a file is executable
- * Input:  path, the file file
- * Output: 1, if the is executable
- *         0, else
- */
-static inline int isExecutable2(char *path)
-{
-	struct stat buf;
-	return ((stat(path, &buf) >= 0) && (buf.st_mode > 0) && (S_IXUSR & buf.st_mode));
-}
-
-/*
  * Run an array of processes in a concurrent way.
  * Wait until all of them are terminated.
  * Input:	paths,	array of paths
@@ -88,66 +102,42 @@ static void runConcurrentProcesses(char *paths[], char **argvs[], int n)
 	pid_t pid;
 	int i;
 
-	// Start processes
 	for (i = 0; i < n; i++)
 	{
-		// Create a child process
-		switch (pid = fork())
+		// Fork
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
+
+		// Child
+		if (pid == 0)
 		{
-		// Error
-		case -1:
-			perror("fork");
-			exit(EXIT_FAILURE);
-		// Child process
-		case 0:
-			// Execute file
-			exit(execvp(paths[i], argvs[i]));
-		// Parent process
+			execvp(paths[i], argvs[i]);
+			errorAndDie("execvp");
 		}
 	}
 
-	// Wait processes
+	// Wait until the children terminate
 	for (i = 0; i < n; i++)
-	{
-		// Wait until a child process terminates
-		if (wait(NULL) == -1)
-		{
-			perror("waitpid");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	exit(EXIT_SUCCESS);
+		if (wait(NULL) < 0)
+			errorAndDie("waitpid");
 }
 
-extern void run(int argc, char *argv[])
+/*
+ * Print error message and exit
+ * Input: msg, the error message
+ */
+static inline void errorAndDie(const char *msg)
 {
-	struct dirent **fileNames;
-	int count;
-	int i;
-	char **paths;
-	char ***argvs;
+	perror(msg);
+	exit(EXIT_FAILURE);
+}
 
-	count = scandir(cwd, &fileNames, filterDirExecutable, NULL);
-	if (count < 0)
-	{
-		perror("scandir");
-		exit(EXIT_FAILURE);
-	}
-
-	paths = (char **) malloc(count * sizeof(char **));
-	argvs = (char ***) malloc(count * sizeof(char ***));
-	for (i = 0; i < count; i++)
-	{
-		paths[i] = (char *) malloc((sizeof(cwd) + sizeof(fileNames[i]->d_name) + 2) * sizeof(char *));
-		sprintf(paths[i], "%s/%s", cwd, fileNames[i]->d_name);
-
-		argvs[i] = (char **) malloc(2 * sizeof(char **));
-		argvs[i][0] = fileNames[i]->d_name;
-		argvs[i][1] = NULL;
-	}
-
-	runConcurrentProcesses(paths, argvs, count);
-
-	exit(EXIT_SUCCESS);
+/*
+ * Print message and exit
+ * Input: msg, the message
+ */
+static inline void printAndDie(const char *msg)
+{
+	printf("%s\n", msg);
+	exit(EXIT_FAILURE);
 }

@@ -79,17 +79,15 @@ static inline void runIfExecutable(char *path, char *args[])
 	if (!isExecutable(path)) return;
 
 	// Create child process
-	switch (pid = fork())
-	{
-	// Error
-	case -1:
+	if ((pid = fork()) < 0)
 		errorAndDie("fork");
-		break;
+
 	// Child
-	case 0:
+	if (pid == 0)
+	{
 		// Execute command
-		if (execvp(path, args) < 0)
-			errorAndDie("execvp");
+		execvp(path, args);
+		errorAndDie("execvp");
 	}
 
 	// Wait until the child process terminates
@@ -124,7 +122,7 @@ static void spyDirectory(char *dir)
 
 	printf("Watching %s\n", dir);
 
-	while (TRUE)
+	while (True)
 	{
 		i = 0;
 		length = read(fd, buffer, BUF_LEN);

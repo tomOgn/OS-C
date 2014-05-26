@@ -1,5 +1,4 @@
 /*
-Prova Pratica di Laboratorio di Sistemi Operativi
 20 giugno 2013
 Esercizio 1
 
@@ -82,7 +81,7 @@ static void run(int argc, char *argv[])
     		exit(EXIT_SUCCESS);
     	// ... > 1) => Wrong input
     	default:
-    		printAndDie("The function requires 0 or 1 parameters.\n");
+    		printAndDie("The function requires 0 or 1 parameters.");
     }
 }
 

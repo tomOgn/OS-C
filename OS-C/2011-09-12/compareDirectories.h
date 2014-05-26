@@ -26,79 +26,17 @@ static inline char *getAbsolutePath(char *dirPath, char *fileName);
 static inline int sameContent(FILE *f1, FILE *f2);
 static int hasExtension(const char *fileName, const char **extensions, int n);
 int filterExtensions(const struct dirent *entry);
-void compareDirectories(char *dirA, char *dirB);
+static void compareDirectories(char *dirA, char *dirB);
 
-/*
- * Get the full path of a file.
- * Input:  dirPath,  directory path
- * 		   fileName, file name
- * Output: pointer to the file path
- */
-static inline char *getAbsolutePath(char *dirPath, char *fileName)
+extern void run(int argc, char *argv[])
 {
-	int lenght = strlen(dirPath) + strlen(fileName) + 1;
-	char *filePath = (char *) malloc(lenght * sizeof(char *));
-	if (!filePath)
-		errorAndDie("malloc");
+	if (argc != 3)
+		printAndDie("The function requires two parameters to be passed in.");
 
-	sprintf(filePath, "%s/%s", dirPath, fileName);
+	if (!isDirectory(argv[1]) || !isDirectory(argv[2]))
+		printAndDie("The parameters should be two existing directories.");
 
-	return filePath;
-}
-
-/*
- * Check, byte by byte, if two files have same content.
- * Input:   f1,    pointer to file 1
- * 		    f2,    pointer to file 2
- * Output:  TRUE,  if they have the same content
- * 			FALSE, else
- */
-static inline int sameContent(FILE *f1, FILE *f2)
-{
-	while (!feof(f1) && fgetc(f1) == fgetc(f2));
-
-	return feof(f1) && feof(f2);
-}
-
-/*
- * Check if a file name has a particular extension.
- * Input:   fileName, 	file name
- * 			extensions,	array of possible extensions
- * 			n,			dimension of the array
- *
- * Output:
- * 			1,          if the entry has one of the possible extensions
- * 			0,          else
- */
-static int hasExtension(const char *fileName, const char **extensions, int n)
-{
-	char *extension = strrchr(fileName, '.') + 1;
-	int output = False;
-	int i = 0;
-
-	if (extension)
-		while (i < n && !output)
-		{
-			if (!strcmp(extension, extensions[i]))
-				output = True;
-			else
-				i++;
-		}
-
-	return output;
-}
-
-/*
- * Filter function for directories
- * Input:  entry, pointer to the directory entry
- * Output: 1,     if the entry has .h or .c extension
- * 		   0,     else
- */
-int filterExtensions(const struct dirent *entry)
-{
-	const char *exts[] = { "c", "h"};
-
-	return entry->d_type == DT_REG && hasExtension(entry->d_name, exts, 2);
+	compareDirectories(argv[1], argv[2]);
 }
 
 /*
@@ -106,7 +44,7 @@ int filterExtensions(const struct dirent *entry)
  * Print if a file is in dirA but not in dirB and vice versa.
  * Input: dirA & dirB, path to directories A and B
  */
-void compareDirectories(char *dirA, char *dirB)
+static void compareDirectories(char *dirA, char *dirB)
 {
 	int result, countA, countB, itA, itB;
 	struct dirent **filesA, **filesB;
@@ -145,15 +83,42 @@ void compareDirectories(char *dirA, char *dirB)
 			printf("%s not in %s\n", filesB[itB]->d_name, dirA);
 }
 
-extern void run(int argc, char *argv[])
+/*
+ * Check if a file name has a particular extension.
+ * Input:   fileName, 	file name
+ * 			extensions,	array of possible extensions
+ * 			n,			dimension of the array
+ * Output:
+ * 			1,          if the entry has one of the possible extensions
+ * 			0,          else
+ */
+static inline int hasExtension(const char *fileName, const char **extensions, int n)
 {
-	if (argc != 3)
-		printAndDie("The function requires two parameters to be passed in.\n");
+	char *extension;
+	int i;
 
-	if (!isDirectory(argv[1]) || !isDirectory(argv[2]))
-		printAndDie("The parameters should be two existing directories.\n");
+	if (!(extension = strrchr(fileName, '.')))
+		return False;
 
-	compareDirectories(argv[1], argv[2]);
+	extension += sizeof (char);
+	for (i = 0; i < n; i++)
+		if (!strcmp(extension, extensions[i]))
+			return True;
+
+	return False;
+}
+
+/*
+ * Filter function for directories
+ * Input:  entry, pointer to the directory entry
+ * Output: 1,     if the entry has .h or .c extension
+ * 		   0,     else
+ */
+int filterExtensions(const struct dirent *entry)
+{
+	const char *exts[] = { "c", "h" };
+
+	return entry->d_type == DT_REG && hasExtension(entry->d_name, exts, 2);
 }
 
 /*
@@ -170,6 +135,41 @@ static inline int isDirectory(char *path)
 		errorAndDie("stat");
 
 	return info.st_mode & S_IFDIR;
+}
+
+/*
+ * Get the full path of a file.
+ * Input:  dirPath,  directory path
+ * 		   fileName, file name
+ * Output: pointer to the file path
+ */
+static inline char *getAbsolutePath(char *dirPath, char *fileName)
+{
+	int lenght;
+	char *filePath;
+
+	lenght = strlen(dirPath) + strlen(fileName) + 1;
+	filePath = (char *) malloc(lenght * sizeof (char));
+	if (!filePath)
+		errorAndDie("malloc");
+
+	sprintf(filePath, "%s/%s", dirPath, fileName);
+
+	return filePath;
+}
+
+/*
+ * Check, byte by byte, if two files have same content.
+ * Input:   f1,    file 1
+ * 		    f2,    file 2
+ * Output:  1,     if they have the same content
+ * 			0,     else
+ */
+static inline int sameContent(FILE *f1, FILE *f2)
+{
+	while (!feof(f1) && fgetc(f1) == fgetc(f2));
+
+	return feof(f1) && feof(f2);
 }
 
 /*

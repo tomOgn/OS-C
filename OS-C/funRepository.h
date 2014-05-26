@@ -57,6 +57,7 @@ typedef struct
 static inline int      areEqual(int x[], int y[], int n);
 static int             compareAlphabetic(const void *s1, const void *s2);
 static void            compareDirectories(char *dirA, char *dirB);
+static int             countTokens(const char *sentence, int *longest);
 static inline void     errorAndDie(const char *msg);
 int                    filterExtensions(const struct dirent *entry);
 int                    filterNames(const struct dirent *entry);
@@ -70,6 +71,7 @@ int                    iNodeComparison(const struct dirent **a, const struct dir
 static inline void     inverseArray(int x[], int n);
 static inline int      inverseFile(char *pathSrc, char *pathDst, off_t chunk);
 static inline int      isDirectory(char *path);
+static inline int      isEnd(int c);
 static inline int      isExecutable(char *path);
 static inline int      isFile(char *path);
 static inline int      isHiddenFile(char *path);
@@ -79,17 +81,24 @@ static inline int      isNumberR(char *text);
 static inline int      isNumber(char *str);
 static inline int      isProcess(int pid);
 static inline int      isSignalNumber(int n);
+static inline int      isSpace(int c);
 static inline int      isTextFile(char *path);
 static inline int      max(int a[], int n);
 static inline void     outputNamedPipe(char *name[], int n);
 static inline Process *parseArguments(int argc, char **argv);
+static void            parseArgumentsOptions(int argc, char **argv);
+static void            parseMakeFile(char *path);
 static inline void     pollNamedPipes(char *name[], int n);
 static inline void     printArray(int x[], int n);
 static inline void     printArrayR(char **x, int n);
 static inline void     printAndDie(const char *msg);
 static inline void     printDirectory(char *path);
+static void            printHardLinks(char *dir);
 static inline void     readPipe(int fd);
 static inline void     redirectOutputN(int n);
+static void            runAndRepeatOnError(Process *process)
+static void            runConcurrentProcesses(char *paths[], char **argvs[], int n);
+static inline void     runIfExecutable(char *path, char *args[]);
 static inline void     runProcess(char *path, char *command[]);
 static inline void     runProcessN(Process *process, int n);
 static inline int      sameContent(FILE *f1, FILE *f2);
@@ -99,7 +108,286 @@ static inline void     simplePipe(void);
 static void            spyDirectory(char *directory);
 static inline void     testPing(char *message, int times);
 static inline void     testTokenRing(int n);
+static int             tokenize(char *sentence, char ***tokens);
 static inline void     writePipe(int fd);
+
+/*
+ * Run a process. Repeat on error.
+ */
+static void runAndRepeatOnError(Process *process)
+{
+	pid_t pid;
+	int status;
+
+	do
+	{
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
+
+		if (pid == 0)
+		{
+			execvp(process->pth, process->cmd);
+			errorAndDie("execvp");
+		}
+
+		if (wait(&status) < 0)
+			errorAndDie("waitpid");
+	}
+	while (status != 0);
+}
+
+/*
+ * Parse a mini MakeFile. Extract and run the commands.
+ * Input:  path, path of the mini MakeFile
+ */
+static void parseMakeFile(char *path)
+{
+	char *target, *command, *line, *delimiter = ":";
+	char **tokens;
+	FILE *file;
+    size_t len = 0;
+
+	// Open the file
+    file = fopen(path, "r");
+	if (!file)
+		printAndDie("Mini Make File not found.");
+
+	// Parse the file line by line
+	while (getline(&line, &len, file) != -1)
+	{
+		// Extract target and command
+		target = strtok(line, delimiter);
+		command = strtok(NULL, delimiter);
+
+		// Tokenize and execute target
+		if (!strcmp(target, "run") || !isFile(target))
+		{
+			// Parse arguments
+			tokenize(command, &tokens);
+
+			// Run the command
+			runProcess(tokens[0], tokens);
+		}
+	}
+}
+
+/*
+ * Count tokens in a sentence.
+ */
+static int countTokens(const char *sentence, int *longest)
+{
+	int i, count, lenght;
+	lenght = *longest = i = count = 0;
+
+	while (isEnd(sentence[i]) || isSpace(sentence[i])) i++;
+
+	// Count the first (n - 1) tokens
+	while (sentence[i])
+	{
+		if (isSpace(sentence[i]))
+		{
+			if (*longest < lenght)
+				*longest = lenght;
+			lenght = 0;
+			count++;
+			i++;
+			while (isEnd(sentence[i]) || isSpace(sentence[i])) i++;
+		}
+		else
+		{
+			i++;
+			lenght++;
+		}
+	}
+
+	// Count the last token
+	lenght--;
+	if (*longest < lenght)
+		*longest = lenght;
+
+	return count + 1;
+}
+
+/*
+ * Tokenize a string accordingly to a given delimiter.
+ */
+static int tokenize(char *sentence, char ***tokens)
+{
+	int k, i, j, longest, count;
+
+	longest = 0;
+	count = countTokens(sentence, &longest);
+
+	// Allocate space for array of strings
+	*tokens = (char **) malloc((count +1 ) * sizeof (char *));
+	if (!*tokens) errorAndDie("malloc");
+
+	// Allocate space for each string in the array and tokenize it
+	i = 0;
+	while (isEnd(sentence[i]) || isSpace(sentence[i])) i++;
+
+	for (k = 0; k < count; k++)
+	{
+		(*tokens)[k] = (char *) malloc((longest + 1) * sizeof (char));
+
+		j = 0;
+		while (sentence[i] && !isEnd(sentence[i]) && !isSpace(sentence[i]))
+			(*tokens)[k][j++] = sentence[i++];
+
+		// Null-terminated string
+		(*tokens)[k][j] = (char) 0;
+
+		while (isEnd(sentence[i]) || isSpace(sentence[i])) i++;
+	}
+
+	(*tokens)[k] = NULL;
+
+	return count;
+}
+
+static inline int isEnd(int c)
+{
+    return c == '\n' || c == EOF;
+}
+
+static inline int isSpace(int c)
+{
+    return c == ' ' || c == '\t';
+}
+
+/*
+ * Check if a file is executable. If yes, run it.
+ * Input:  path, file path
+ *         args, arguments list
+ */
+static inline void runIfExecutable(char *path, char *args[])
+{
+	pid_t pid;
+
+	if (!isExecutable(path)) return;
+
+	// Create child process
+	if ((pid = fork()) < 0)
+		errorAndDie("fork");
+
+	// Child
+	if (pid == 0)
+	{
+		// Execute command
+		execvp(path, args);
+		errorAndDie("execvp");
+	}
+
+	// Wait until the child process terminates
+	if (wait(NULL) < 0)
+		errorAndDie("waitpid");
+
+	// Remove file
+	if (remove(path) < 0)
+		errorAndDie("remove");
+}
+
+/*
+ * Scan a directory. Order entries by iNode.
+ * Group hard links and print them.
+ * Input: dir, the directory
+ */
+static void printHardLinks(char *dir)
+{
+	int result, i;
+	struct dirent **files;
+
+	result = scandir(dir, &files, NULL, iNodeComparison);
+	if (result < 0)
+		errorAndDie("scandir");
+
+	// Check if directory is empty
+	if (!result) return;
+
+	// Print first element
+	printf("%s/%s ", dir, files[0]->d_name);
+
+	// Loop through directory entries
+	for(i = 1; i < result; i++)
+	{
+		// If (iNode[i] != iNode[i - 1]) => not hard links => break line
+		if ((long)files[i]->d_ino != (long)files[i - 1]->d_ino)
+			printf("\n");
+
+		// Print file name
+		printf("%s/%s ", dir, files[i]->d_name);
+	}
+	printf("\n");
+}
+
+/*
+ * Parse arguments accordingly to a given set of options.
+ * Input: argc, the argument counter
+ *        argv, the argument vector
+ */
+static void parseArgumentsOptions(int argc, char **argv)
+{
+	int i, j, result;
+	char **command;
+	char *fileName, *outFile, *inFile;
+
+	// Short-named options
+	const char *shortOptions = "o:i:h";
+	// Long-named options
+	static struct option longOptions[] =
+	{
+		{"in",		required_argument, 0,  'i' },
+		{"out",		required_argument, 0,  'o' },
+		{"help",	no_argument, 	   0,  'h' },
+		{0,         0,                 0,   0  }
+	};
+
+	result = True;
+	outFile = inFile = NULL;
+
+	// Disable default error message
+	opterr = 0;
+
+	// Parse options
+	result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
+	if (result < 0)
+		printAndDie("Wrong input. Run 'redir -h' for help.");
+
+	j = 1;
+	while (result != -1 && result != '?')
+	{
+		// Get the option value
+		switch (result)
+		{
+		case 'i':
+			inFile = optarg;
+			j = optind;
+			break;
+		case 'o':
+			outFile = optarg;
+			j = optind;
+			break;
+		case 'h':
+			printf("Usage: [options] command\n");
+			printf(" options:\n");
+			printf("  -i --in    required_argument   Redirect input.\n");
+			printf("  -o --out   required_argument   Redirect output.\n");
+			printf("  -h --help  no_argument         Show this help.\n");
+			exit(EXIT_SUCCESS);
+		}
+		result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
+	}
+
+	// Parse command
+	command = (char **) malloc((argc - optind + 1) * sizeof (char *));
+	fileName = argv[j];
+	i = 0;
+	while (j < argc)
+		command[i++] = argv[j++];
+	command[i] = NULL;
+
+	redirectAndRun(outFile, inFile, fileName, command);
+}
 
 /*
  * Retrieve the output of the given named pipes.
@@ -908,6 +1196,39 @@ static inline Process *parseArguments(int argc, char **argv)
 }
 
 /*
+ * Run an array of processes in a concurrent way.
+ * Wait until all of them are terminated.
+ * Input:	paths,	array of paths
+ *          args,   array of array of arguments
+ *          n,      dimension of the arrays
+ * Output:	void
+ */
+static void runConcurrentProcesses(char *paths[], char **argvs[], int n)
+{
+	pid_t pid;
+	int i;
+
+	for (i = 0; i < n; i++)
+	{
+		// Fork
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
+
+		// Child
+		if (pid == 0)
+		{
+			execvp(paths[i], argvs[i]);
+			errorAndDie("execvp");
+		}
+	}
+
+	// Wait until the children terminate
+	for (i = 0; i < n; i++)
+		if (wait(NULL) < 0)
+			errorAndDie("waitpid");
+}
+
+/*
  * Run n copies of a process.
  * Wait until all of them terminate.
  * Input: process, data structure containing:
@@ -1261,22 +1582,20 @@ int filterExtensions(const struct dirent *entry)
  * 			1,          if the entry has one of the possible extensions
  * 			0,          else
  */
-static int hasExtension(const char *fileName, const char **extensions, int n)
+static inline int hasExtension(const char *fileName, const char **extensions, int n)
 {
-	char *extension = strrchr(fileName, '.') + 1;
-	int output = False;
-	int i = 0;
+	char *extension;
+	int i;
 
-	if (extension)
-		while (i < n && !output)
-		{
-			if (!strcmp(extension, extensions[i]))
-				output = True;
-			else
-				i++;
-		}
+	if (!(extension = strrchr(fileName, '.')))
+		return False;
 
-	return output;
+	extension += sizeof (char);
+	for (i = 0; i < n; i++)
+		if (!strcmp(extension, extensions[i]))
+			return True;
+
+	return False;
 }
 
 /*
@@ -1301,8 +1620,11 @@ static inline int sameContent(FILE *f1, FILE *f2)
  */
 static inline char *getAbsolutePath(char *dirPath, char *fileName)
 {
-	int lenght = strlen(dirPath) + strlen(fileName) + 1;
-	char *filePath = (char *) malloc(lenght * sizeof(char *));
+	int lenght;
+	char *filePath;
+
+	lenght = strlen(dirPath) + strlen(fileName) + 1;
+	filePath = (char *) malloc(lenght * sizeof (char));
 	if (!filePath)
 		errorAndDie("malloc");
 
@@ -1557,21 +1879,10 @@ static inline int isHiddenFile(char *path)
 
 /*
  * Check if a file exists.
- * Input:  path, file path
- * Output: 1,    if the file exists
- * 		   0,    else
  */
 static inline int isFile(char *path)
 {
-	FILE *file = fopen(path, "r");
-
-	if (file)
-	{
-		fclose(file);
-		return True;
-	}
-
-	return False;
+	return access(path, F_OK) != -1;
 }
 
 #endif

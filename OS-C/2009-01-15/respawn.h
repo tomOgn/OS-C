@@ -16,6 +16,8 @@ URL: http://www.cs.unibo.it/~renzo/so/pratiche/2009.01.15.pdf
 #include <stdlib.h>
 #include <sys/types.h>
 
+static void runEndlessProcess(char *path, char *command[]);
+
 extern void run(int argc, char *argv[])
 {
 	if (argc < 2)
@@ -34,39 +36,28 @@ extern void run(int argc, char *argv[])
     	command[i] = argv[i + 2];
     command[i] = NULL;
 
-    runProcess(path, command);
+    runEndlessProcess(path, command);
 }
 
-static void runProcess(char *path, char *command[])
+static void runEndlessProcess(char *path, char *command[])
 {
 	pid_t pid;
 
-	if ((pid = fork()) < 0)
-		errorAndDie("fork");
-
-	// Child process
-	if (pid == 0)
+	while (True)
 	{
-		if (execvp(path, command) < 0)
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
+
+		// Child process
+		if (pid == 0)
+		{
+			execvp(path, command);
 			errorAndDie("execvp");
+		}
 
-		exit(EXIT_SUCCESS);
-	}
-
-	// Wait until the child process terminates
-	if (wait(NULL) < 0)
-		errorAndDie("waitpid");
-
-	if ((pid = fork()) < 0)
-		errorAndDie("fork");
-
-	// Child process
-	if (pid == 0)
-	{
-		if (execvp(path, command) < 0)
-			errorAndDie("execvp");
-
-		exit(EXIT_SUCCESS);
+		// Wait until the child process terminates
+		if (wait(NULL) < 0)
+			errorAndDie("waitpid");
 	}
 }
 

@@ -23,6 +23,81 @@ static inline void errorAndDie(const char *msg);
 static void redirectAndRun(char *outFile, char *inFile, char *path, char *command[]);
 static void parseArguments(int argc, char **argv);
 
+// Entry point
+extern void run(int argc, char *argv[])
+{
+	parseArguments(argc, argv);
+}
+
+/*
+ * Parse arguments accordingly to a given set of options.
+ * Input: argc, the argument counter
+ *        argv, the argument vector
+ */
+static void parseArguments(int argc, char **argv)
+{
+	int i, j, result;
+	char **command;
+	char *fileName, *outFile, *inFile;
+
+	// Short-named options
+	const char *shortOptions = "o:i:h";
+	// Long-named options
+	static struct option longOptions[] =
+	{
+		{"in",		required_argument, 0,  'i' },
+		{"out",		required_argument, 0,  'o' },
+		{"help",	no_argument, 	   0,  'h' },
+		{0,         0,                 0,   0  }
+	};
+
+	result = True;
+	outFile = inFile = NULL;
+
+	// Disable default error message
+	opterr = 0;
+
+	// Parse options
+	result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
+	if (result < 0)
+		printAndDie("Wrong input. Run 'redir -h' for help.");
+
+	j = 1;
+	while (result != -1 && result != '?')
+	{
+		// Get the option value
+		switch (result)
+		{
+		case 'i':
+			inFile = optarg;
+			j = optind;
+			break;
+		case 'o':
+			outFile = optarg;
+			j = optind;
+			break;
+		case 'h':
+			printf("Usage: [options] command\n");
+			printf(" options:\n");
+			printf("  -i --in    required_argument   Redirect input.\n");
+			printf("  -o --out   required_argument   Redirect output.\n");
+			printf("  -h --help  no_argument         Show this help.\n");
+			exit(EXIT_SUCCESS);
+		}
+		result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
+	}
+
+	// Parse command
+	command = (char **) malloc((argc - optind + 1) * sizeof (char *));
+	fileName = argv[j];
+	i = 0;
+	while (j < argc)
+		command[i++] = argv[j++];
+	command[i] = NULL;
+
+	redirectAndRun(outFile, inFile, fileName, command);
+}
+
 /*
  * Re-direct [input, output] and run a command
  * Input: outFile, output file
@@ -37,7 +112,7 @@ static void redirectAndRun(char *outFile, char *inFile, char *command, char *arg
 	outFD = inFD = 0;
 	if (inFile)
 	{
-		inFD = open(outFile, O_RDONLY);
+		inFD = open(inFile, O_RDONLY);
 		if (inFD < 0)
 			errorAndDie("open");
 	}
@@ -48,8 +123,7 @@ static void redirectAndRun(char *outFile, char *inFile, char *command, char *arg
 			errorAndDie("open");
 	}
 
-	pid = fork();
-	if (pid < 0)
+	if ((pid = fork()) < 0)
 		errorAndDie("fork");
 
 	// Child process
@@ -57,83 +131,30 @@ static void redirectAndRun(char *outFile, char *inFile, char *command, char *arg
 	{
 		if (inFile)
 		{
-			if (dup2(inFD, 0) < 0)
+			if (dup2(inFD, STDIN_FILENO) < 0)
 				errorAndDie("dup2");
-			close(inFD);
+
+			if (close(inFD) < 0)
+				 errorAndDie("close");
 		}
 		if (outFile)
 		{
-			if (dup2(outFD, 1) < 0)
+			if (dup2(outFD, STDOUT_FILENO) < 0)
 				errorAndDie("dup2");
-			close(outFD);
+			if (close(outFD) < 0)
+				 errorAndDie("close");
 		}
-	    if (execvp(command, args) < 0)
-	    	errorAndDie("execvp");
+	    execvp(command, args);
+	    errorAndDie("execvp");
 	}
 
 	// Parent process
 	if (inFile)
-		close(inFD);
+		if (close(inFD) < 0)
+			 errorAndDie("close");
 	if (outFile)
-		close(outFD);
-}
-
-static void parseArguments(int argc, char **argv)
-{
-	int i, j, result;
-	char **command;
-	const char *shortOptions = "o:i:h";
-	char *fileName, *outFile, *inFile;
-
-	static struct option longOptions[] =
-	{
-		{"in",		required_argument, 0,  'i' },
-		{"out",		required_argument, 0,  'o' },
-		{"help",	no_argument, 	   0,  'h' },
-		{0,         0,                 0,   0  }
-	};
-
-	result = TRUE;
-	outFile = inFile = NULL;
-	result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
-	if (result < 0)
-		printAndDie("Wrong input. Run 'redir -h' for help.");
-
-	while (result != -1 && result != '?')
-	{
-		switch (result)
-		{
-		case 'i':
-			inFile = optarg;
-			break;
-		case 'o':
-			outFile = optarg;
-			break;
-		case 'h':
-			printf("Usage: [options] command\n");
-			printf(" options:\n");
-			printf("  -i --in    required_argument   Redirect input.\n");
-			printf("  -o --out   required_argument   Redirect output.\n");
-			printf("  -h --help  no_argument         Show this help.\n");
-			exit(EXIT_SUCCESS);
-		}
-
-		result = getopt_long(argc, argv, shortOptions, longOptions, NULL);
-	}
-
-	if (optind == argc || result == '?')
-		printAndDie("Wrong input. Run 'redir -h' for help.");
-
-	command = (char **) malloc((argc - optind + 1) * sizeof(char *));
-	fileName = argv[j];
-
-	i = 0;
-	j = optind;
-	while (j < argc)
-		command[i++] = argv[j++];
-	command[i] = NULL;
-
-	redirectAndRun(outFile, inFile, fileName, command);
+		if (close(outFD) < 0)
+			 errorAndDie("close");
 }
 
 /*
@@ -154,9 +175,4 @@ static inline void printAndDie(const char *msg)
 {
 	printf("%s\n", msg);
 	exit(EXIT_FAILURE);
-}
-
-extern void run(int argc, char *argv[])
-{
-	parseArguments(argc, argv);
 }
