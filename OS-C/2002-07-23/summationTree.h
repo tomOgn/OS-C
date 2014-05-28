@@ -1,9 +1,9 @@
 /*
 Prova Pratica di Laboratorio di Sistemi Operativi
-20 gennaio 2005
+23 luglio 2002
 Esercizio 1
 
-URL: http://www.cs.unibo.it/~renzo/so/pratiche/2005.01.25.pdf
+URL: http://www.cs.unibo.it/~renzo/so/pratiche/2002-07-23.pdf
 
 @author: Tommaso Ognibene
 */
@@ -30,33 +30,56 @@ static inline void errorAndDie(const char *msg);
 static inline void printAndDie(const char *msg);
 static int openFIFO(char *path);
 
-static int openFIFO(char *path)
-{
-	int output;
-	struct stat buf_fstat;
-
-	if ((output = open(path, O_RDWR| O_NONBLOCK)) < 0)
-		errorAndDie("open");
-
-	if (fstat(output, &buf_fstat))
-		errorAndDie("fstat");
-
-	if (!S_ISFIFO(buf_fstat.st_mode))
-		printAndDie(sprintf("%s is not a pipe.", path));
-
-	return output;
-}
-
 extern void run(int argc, char *argv[])
 {
-    int *fifos;
+    int height;
+	int *fifos;
     int ready_fd, nfds, buff_count, count, i;
     fd_set fdset, tmpset;
     char buff[BUFFER];
     struct stat buf_fstat;
+    pid_t pid;
+    char *path, *command;
+    int fd[2][2];
+	if (argc != 2)
+		printAndDie("Wrong number of parameters.");
 
-	if (argc == 1)
-		printAndDie("Wrong number of parameters.\n");
+	height = argv[1];
+
+	while (height > 1 && pid == 0)
+	{
+		// Create left and right pipe
+		if (pipe(fd[0]) < 0 || pipe(fd[1]) < 0)
+			errorAndDie("pipe");
+
+		// Close input side
+		if ((close(fd[0][0]) < 0) || (close(fd[1][0]) < 0))
+			errorAndDie("close");
+
+		// Fork
+		if ((pid = fork()) < 0)
+			errorAndDie("fork");
+
+		// Left process
+		if (pid == 0)
+		{
+			height--;
+
+			// Close input side
+			if ((close(fd[0][0]) < 0) || (close(fd[1][0]) < 0))
+				errorAndDie("close");
+
+
+		}
+		else
+		{
+			if ((pid = fork()) < 0)
+				errorAndDie("fork");
+			// Child process
+			if (pid == 0)
+				height--;
+		}
+	}
 
 	FD_ZERO(&fdset);
 	fifos = (int *) malloc(sizeof(int) * (argc - 1));
@@ -100,6 +123,25 @@ extern void run(int argc, char *argv[])
 		memcpy((void *) &fdset,(void *) &tmpset, sizeof(fd_set));
 	}
 }
+
+static int openFIFO(char *path)
+{
+	int output;
+	struct stat buf_fstat;
+
+	if ((output = open(path, O_RDWR| O_NONBLOCK)) < 0)
+		errorAndDie("open");
+
+	if (fstat(output, &buf_fstat))
+		errorAndDie("fstat");
+
+	if (!S_ISFIFO(buf_fstat.st_mode))
+		printAndDie(sprintf("%s is not a pipe.", path));
+
+	return output;
+}
+
+
 
 /*
  * Find the max in an array.

@@ -17,21 +17,13 @@
 //#include "2011-06-22/signalHandling.h"
 //#include "2011-05-30/client.h"
 //#include "2011-05-30/server.h"
-#include "2011-02-15/reActivate.h"
+//#include "2011-02-15/reActivate.h"
 //#include "2011-01-19/parseAndRedirect.h"
 //#include "2010-09-13/writer.h"
 //#include "2010-09-13/reader.h"
-//#include "2010-07-19/ex1.h"
-//#include "2010-06-21/ex1.h"
-//#include "2010-02-03/ex1.h"
-//#include "2009-02-12/ex1.h"
-//#include "2009-02-12/ex2.h"
-//#include "2009-09-23/ex1.h"
-//#include "2009-09-23/ex2.h"
-//#include "2009-07-14/ex1.h"
-//#include "2009-07-14/ex2.h"
 //#include "2006-01-24/sendSignal.h"
 //#include "2006-02-15/outFIFO.h"
+#include "2005-01-25/censorship.h"
 //#include "2005-02-10/ex1.h"
 //#include "2005-06-27/linearAccelerator.h"
 
@@ -41,8 +33,11 @@
 // Entry point
 int main(int argc, char *argv[])
 {
-	run(argc, argv);
+	int c = 4;
+	char *v[] = {"function", "Alliance", "cat", "publicSpeech"};
 
-	printf("Done!\n");
+	run(c, v);
+
+	printf("Done!");
 	exit(EXIT_SUCCESS);
 }

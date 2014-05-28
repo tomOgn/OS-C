@@ -1051,21 +1051,17 @@ static inline void runProcess(char *path, char *command[])
 	pid_t pid;
 
 	// Fork
-	pid = fork();
-	if (pid < 0)
+	if ((pid = fork()) < 0)
 		errorAndDie("fork");
 
 	// Child process
 	if (pid == 0)
 	{
-		// Execute command
-		if (execvp(path, command) < 0)
-			errorAndDie("execve");
-
-		exit(EXIT_SUCCESS);
+		execvp(path, command);
+		errorAndDie("execve");
 	}
 
-	// Wait until it terminates
+	// Wait termination
 	if (wait(NULL) < 0)
 		errorAndDie("wait");
 }
